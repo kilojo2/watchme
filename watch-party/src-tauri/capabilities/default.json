@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Capability for the main window and browser-player child webview",
+  "windows": ["main", "browser-player"],
+  "permissions": [
+    "core:default",
+    "core:event:default"
+  ]
+}
