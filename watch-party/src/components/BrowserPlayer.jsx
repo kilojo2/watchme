@@ -10,6 +10,18 @@ import useBrowserSync from "../hooks/useBrowserSync";
 const WEBVIEW_LABEL = "browser-player";
 
 /**
+ * Runtime detection — проверяем, запущено ли приложение в Tauri.
+ *
+ * В Tauri v2 `window.__TAURI_INTERNALS__` инжектируется в главное окно
+ * через initialization-скрипт. В обычном браузере (Railway) этого нет.
+ *
+ * @returns {boolean} `true` если внутри Tauri webview
+ */
+function isTauriRuntime() {
+  return typeof window !== "undefined" && window.__TAURI_INTERNALS__ != null;
+}
+
+/**
  * BrowserPlayer — компонент встроенного браузера (child webview).
  *
  * ## Архитектура
@@ -47,9 +59,48 @@ const WEBVIEW_LABEL = "browser-player";
  * Это нужно, когда пользователь вручную кликнул по плееру,
  * закрыл рекламу и запустил видео.
  *
+ * ## Browser-only mode (Railway)
+ *
+ * When deployed to Railway (plain browser), the Tauri backend is not
+ * available. The component detects this via `isTauriRuntime()` and
+ * shows a placeholder message instead of the address bar / webview.
+ * All `invoke()` calls safely become no-ops via the Tauri API stub.
+ *
  * @param {{ roomId: string }} props
  */
 export default function BrowserPlayer({ roomId }) {
+  // ── Runtime detection ──────────────────────────────────────
+  const isTauri = isTauriRuntime();
+
+  // Если не в Tauri — показываем сообщение и ничего не рендерим
+  if (!isTauri) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-16 text-zinc-500">
+        <svg className="w-16 h-16 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1}
+            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+          />
+        </svg>
+        <div className="text-center max-w-md">
+          <p className="text-base font-medium text-zinc-400 mb-1">
+            In-App Browser
+          </p>
+          <p className="text-sm text-zinc-600 leading-relaxed">
+            This feature requires the <strong className="text-zinc-500">Tauri desktop app</strong>.
+            It is not available in the browser version.
+          </p>
+          <p className="text-xs text-zinc-700 mt-3">
+            Download the desktop app or use the YouTube player instead.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Refs ────────────────────────────────────────────────────
   // ── Refs ────────────────────────────────────────────────────
   const placeholderRef = useRef(null);
   const containerRef = useRef(null);

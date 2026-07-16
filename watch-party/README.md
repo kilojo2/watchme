@@ -1,15 +1,16 @@
-# WatchMe — Tauri v2 Desktop Watch Party 🎬
+# WatchMe — Watch Party 🎬
 
-Watch parties with friends. Built with **React + Vite + Firebase + Tauri v2**.
+Watch parties with friends. Built with **React + Vite + Firebase**.
 
 **Key features:**
 - 🎥 **YouTube sync** — watch YouTube videos together with play/pause/seek sync
-- 🌐 **Browser Player** — built-in WebView2 browser with network sniffing for HLS/MP4 streams from any site
-- 🔍 **Network Sniffing** — Rust-level interception of HTTP requests to detect `.m3u8`, `.mp4` video URLs
+- 🌐 **Browser Player** *(desktop only)* — built-in WebView2 browser with network sniffing for HLS/MP4 streams from any site
+- 🔍 **Network Sniffing** *(desktop only)* — Rust-level interception of HTTP requests to detect `.m3u8`, `.mp4` video URLs
 - 📡 **HLS.js playback** — play detected HLS streams directly in the app
 - 👥 **Real-time sync** via Firebase
 - 💬 **Built-in chat**
-- 🖥️ **Native desktop app** (Windows MSI/NSIS installers)
+- 🖥️ **Desktop app** — Windows (Tauri v2)
+- 🌍 **Web app** — deploy to Railway, Cloudflare Pages, or any static host
 
 ---
 
@@ -124,6 +125,76 @@ Then set `VITE_USE_EMULATORS=true` in `.env`.
 │  Status: 🎬 Stream mode  🟢 Video detected              │
 └──────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🚂 Deploy to Railway
+
+The project can be deployed as a **web-only** app on Railway. The Browser Player feature uses Tauri IPC and won't work in the browser, but YouTube sync, chat, and all Firebase features work perfectly.
+
+### Prerequisites
+
+| Item | Required |
+|------|----------|
+| [Railway account](https://railway.app) | ✅ |
+| Firebase project (see [Configure Firebase](#2-configure-firebase)) | ✅ |
+| GitHub repo with pushed code | ✅ |
+
+### One-click Deploy
+
+1. **Push to GitHub** (if not already):
+   ```bash
+   cd watch-party
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git remote add origin https://github.com/your-username/watchme.git
+   git push -u origin main
+   ```
+
+2. **Create a Railway project**:
+   - Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
+   - Select your `watchme` repository
+   - Railway auto-detects Node.js and uses the config from `railway.json`
+
+3. **Set environment variables** in Railway Dashboard:
+   | Variable | Value |
+   |---|---|
+   | `VITE_FIREBASE_API_KEY` | Your Firebase API key |
+   | `VITE_FIREBASE_AUTH_DOMAIN` | `watchme-55d62.firebaseapp.com` |
+   | `VITE_FIREBASE_DATABASE_URL` | `https://watchme-55d62-default-rtdb.europe-west1.firebasedatabase.app` |
+   | `VITE_FIREBASE_PROJECT_ID` | `watchme-55d62` |
+   | `VITE_FIREBASE_STORAGE_BUCKET` | `watchme-55d62.firebasestorage.app` |
+   | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `89937118409` |
+   | `VITE_FIREBASE_APP_ID` | `1:89937118409:web:...` |
+
+4. **Deploy** — Railway automatically runs:
+   ```
+   npm run build:railway   # builds with VITE_RAILWAY=1 alias
+   npm run preview          # serves dist/ on PORT (auto-set by Railway)
+   ```
+
+5. **Open** the generated Railway URL (`https://<project>.up.railway.app`).
+
+### What works on Railway
+
+| Feature | Status |
+|---------|--------|
+| ✅ Create/Join rooms | Full support |
+| ✅ YouTube sync (play/pause/seek) | Full support |
+| ✅ Chat | Full support |
+| ✅ User list + admin panel | Full support |
+| ❌ Browser Player (Tauri only) | Shows placeholder — needs desktop app |
+
+### Build locally for web
+
+```bash
+cd watch-party
+VITE_RAILWAY=1 npm run build
+npm run preview
+```
+
+This builds the web version with the Tauri API stub. Open `http://localhost:4173` in any browser.
 
 ---
 
