@@ -142,6 +142,8 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
 
 ### One-click Deploy
 
+> ⚠️ **Important:** The app lives in the `watch-party/` subdirectory. You **must** set the **Service Root Directory** in the Railway Dashboard — `build.rootDir` in `railway.json` is silently ignored by Railpack.
+
 1. **Push to GitHub** (if not already):
    ```bash
    cd watch-party
@@ -155,9 +157,13 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
 2. **Create a Railway project**:
    - Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
    - Select your `watchme` repository
-   - Railway auto-detects Node.js and uses the config from `railway.json`
 
-3. **Set environment variables** in Railway Dashboard:
+3. **Set Service Root Directory** (⚠️ required):
+   - In the Railway Dashboard, go to your service → **Settings** → **Service Root Directory**
+   - Set it to: **`watch-party`**
+   - This tells Railpack where `package.json` lives
+
+4. **Set environment variables** in Railway Dashboard:
    | Variable | Value |
    |---|---|
    | `VITE_FIREBASE_API_KEY` | Your Firebase API key |
@@ -168,13 +174,13 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
    | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `89937118409` |
    | `VITE_FIREBASE_APP_ID` | `1:89937118409:web:...` |
 
-4. **Deploy** — Railway automatically runs:
+5. **Deploy** — Railway reads `railway.json` and runs:
    ```
-   npm run build:railway   # builds with VITE_RAILWAY=1 alias
-   npm run preview          # serves dist/ on PORT (auto-set by Railway)
+   cd watch-party && npm run build:railway   # builds with VITE_RAILWAY=1 alias
+   cd watch-party && npm run preview          # serves dist/ on PORT (auto-set by Railway)
    ```
 
-5. **Open** the generated Railway URL (`https://<project>.up.railway.app`).
+6. **Open** the generated Railway URL (`https://<project>.up.railway.app`).
 
 ### What works on Railway
 
