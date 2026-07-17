@@ -142,7 +142,7 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
 
 ### One-click Deploy
 
-> ⚠️ **Important:** The app lives in the `watch-party/` subdirectory. You **must** set the **Service Root Directory** in the Railway Dashboard — `build.rootDir` in `railway.json` is silently ignored by Railpack.
+> ⚠️ **Important:** The app lives in the `watch-party/` subdirectory. You **must** set the **Service Root Directory** in the Railway Dashboard.
 
 1. **Push to GitHub** (if not already):
    ```bash
@@ -161,7 +161,7 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
 3. **Set Service Root Directory** (⚠️ required):
    - In the Railway Dashboard, go to your service → **Settings** → **Service Root Directory**
    - Set it to: **`watch-party`**
-   - This tells Railpack where `package.json` lives
+   - This tells Nixpacks where `package.json` and `nixpacks.toml` live
 
 4. **Set environment variables** in Railway Dashboard:
    | Variable | Value |
@@ -174,11 +174,13 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
    | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `89937118409` |
    | `VITE_FIREBASE_APP_ID` | `1:89937118409:web:...` |
 
-5. **Deploy** — Railway reads `railway.json` and runs:
-   ```
-   npm run build:railway                               # builds with VITE_RAILWAY=1 alias
-   npm run preview -- --host 0.0.0.0 --port $PORT      # serves on Railway PORT
-   ```
+5. **Deploy** — Railway uses [`nixpacks.toml`](watch-party/nixpacks.toml) to run:
+   | Phase | Command |
+   |-------|---------|
+   | Setup | Install Node.js 20 via Nix |
+   | Install | `npm ci` |
+   | Build | `npm run build:railway` (VITE_RAILWAY=1, Tauri API stub) |
+   | Start | `npm run preview -- --host 0.0.0.0 --port $PORT` |
 
 6. **Open** the generated Railway URL (`https://<project>.up.railway.app`).
 
@@ -197,7 +199,7 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
 ```bash
 cd watch-party
 VITE_RAILWAY=1 npm run build
-npm run preview
+npm run preview -- --host 0.0.0.0 --port 4173
 ```
 
 This builds the web version with the Tauri API stub. Open `http://localhost:4173` in any browser.

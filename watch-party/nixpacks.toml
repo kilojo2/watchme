@@ -1,0 +1,32 @@
+# =============================================================================
+# Nixpacks Configuration — WatchMe / Railway
+# =============================================================================
+# This file tells Nixpacks (used by Railway) how to build and run the app.
+#
+# Root Directory is set to "watch-party" in Railway Dashboard, so this file
+# lives at watch-party/nixpacks.toml and all paths are relative to that.
+#
+# Docs: https://nixpacks.com/docs/configuration
+# =============================================================================
+
+name = "watch-party"
+
+# ── Setup ──────────────────────────────────────────────────────────
+# Install Node.js 20 via Nix (matches package.json engines.node >=20.19.0)
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+# ── Install ────────────────────────────────────────────────────────
+# Use `npm ci` for reproducible installs (respects package-lock.json)
+[phases.install]
+cmds = ["npm ci"]
+
+# ── Build ──────────────────────────────────────────────────────────
+# Run the Railway-specific build (VITE_RAILWAY=1, Tauri API stub)
+[phases.build]
+cmds = ["npm run build:railway"]
+
+# ── Start ──────────────────────────────────────────────────────────
+# Serve the built SPA on 0.0.0.0:$PORT (Railway healthcheck requirement)
+[start]
+cmd = "npm run preview -- --host 0.0.0.0 --port $PORT"
