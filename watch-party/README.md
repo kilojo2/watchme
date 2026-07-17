@@ -176,8 +176,8 @@ The project can be deployed as a **web-only** app on Railway. The Browser Player
 
 5. **Deploy** — Railway reads `railway.json` and runs:
    ```
-   cd watch-party && npm run build:railway   # builds with VITE_RAILWAY=1 alias
-   cd watch-party && npm run preview          # serves dist/ on PORT (auto-set by Railway)
+   npm run build:railway                               # builds with VITE_RAILWAY=1 alias
+   npm run preview -- --host 0.0.0.0 --port $PORT      # serves on Railway PORT
    ```
 
 6. **Open** the generated Railway URL (`https://<project>.up.railway.app`).
