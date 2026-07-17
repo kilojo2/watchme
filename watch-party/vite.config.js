@@ -16,8 +16,12 @@ export default defineConfig({
   resolve: {
     alias: isRailway
       ? {
-          // Replace Tauri API with browser-compatible stub
-          '@tauri-apps/api': path.resolve(__dirname, 'src/lib/tauri-stub.js'),
+          // Replace Tauri API with browser-compatible stub directory.
+          // Vite resolves subpath imports automatically:
+          //   @tauri-apps/api       → tauri-stub/index.js
+          //   @tauri-apps/api/core  → tauri-stub/core.js
+          //   @tauri-apps/api/event → tauri-stub/event.js
+          '@tauri-apps/api': path.resolve(__dirname, 'src/lib/tauri-stub'),
         }
       : undefined,
   },
