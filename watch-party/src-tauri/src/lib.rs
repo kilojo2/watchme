@@ -161,7 +161,7 @@ async fn create_browser_webview(
     };
 
     // ═══════════════════════════════════════════════════════════════
-    // ШАГ 8: Пост-создание — диагностика + show()
+    // ШАГ 8: Пост-создание — show() + eval test (getters removed)
     // ═══════════════════════════════════════════════════════════════
     // Явно включаем авто-resize, чтобы webview следовал за окном
     match child.set_auto_resize(true) {
@@ -175,28 +175,29 @@ async fn create_browser_webview(
         Err(e) => println!("[Rust] ⚠️ child.show() error: {:?}", e),
     }
 
-    // Диагностика: bounds() — единый запрос позиции + размера
-    match child.bounds() {
-        Ok(b) => println!("[Rust] 📐 Child bounds: pos=({:?}), size=({:?})", b.position, b.size),
-        Err(e) => println!("[Rust] ⚠️ child.bounds() error: {:?}", e),
-    }
+    // ── GETTER DIAGNOSTICS REMOVED ─────────────────────────────────
+    // child.bounds(), child.position(), child.size(), child.url()
+    // ALL return Runtime(FailedToReceiveMessage) — see analysis below.
+    // Mutations (set_auto_resize, show, eval) only appear to succeed
+    // because send_user_message() returns Ok when queued via proxy.
+    // ───────────────────────────────────────────────────────────────
 
-    // Диагностика: position() отдельно
-    match child.position() {
-        Ok(pos) => println!("[Rust] 📍 Child position: ({:?})", pos),
-        Err(e) => println!("[Rust] ⚠️ child.position() error: {:?}", e),
-    }
-
-    // Диагностика: size() отдельно
-    match child.size() {
-        Ok(s) => println!("[Rust] 📐 Child size: ({:?})", s),
-        Err(e) => println!("[Rust] ⚠️ child.size() error: {:?}", e),
-    }
-
-    // Диагностика: URL
-    match child.url() {
-        Ok(url) => println!("[Rust] 🔗 Child webview URL: {}", url),
-        Err(e) => println!("[Rust] ⚠️ child.url() error: {:?}", e),
+    // Вместо getter-ов используем eval() для проверки жив ли webview.
+    // eval() — fire-and-forget, не ждёт ответа через канал.
+    // Если webview работает, увидим красный overlay с текстом.
+    let test_eval = r#"
+        (function(){
+            if(document.getElementById('__wme_test'))return;
+            var d=document.createElement('div');
+            d.id='__wme_test';
+            d.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:red;z-index:999999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;font-family:sans-serif';
+            d.innerHTML='<h1 style=\"color:white;font-size:24px;margin:0\">WebView TEST</h1><p style=\"color:rgba(255,255,255,0.7);font-size:14px;margin:0\">If you see this, the webview is alive</p>';
+            document.documentElement.appendChild(d);
+        })();
+    "#;
+    match child.eval(test_eval) {
+        Ok(_) => println!("[Rust] ✅ Test eval() sent (fire-and-forget)"),
+        Err(e) => println!("[Rust] ⚠️ Test eval() error: {:?}", e),
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -229,6 +230,22 @@ async fn create_browser_webview(
                 return;
             }
         };
+
+        // ── Диагностика: проверяем, жив ли webview с помощью eval ──
+        // Если eval сработает, callback вызовется. Если нет — webview
+        // не найден в handler-е (та же проблема что и с getter-ами).
+        let diag_cb_js = r#"
+            (function(){
+                return JSON.stringify({alive:true, url:location.href, title:document.title, bodyLen:document.body ? document.body.innerHTML.length : -1});
+            })();
+        "#;
+        let _ = webview.eval_with_callback(diag_cb_js.to_string(), move |result| {
+            if result.is_empty() || result == "null" || result == "undefined" {
+                println!("[Rust] ❌ Health check eval: empty result (webview silent?)");
+                return;
+            }
+            println!("[Rust] ✅ Health check eval RESULT: {}", &result[..result.len().min(200)]);
+        });
 
         // Инжектим сниффер fetch/XHR
         let sniff_js = r#"
