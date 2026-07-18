@@ -32,9 +32,10 @@
  *
  * ## Cross-frame scanning
  *
- * С флагом --disable-web-security (устанавливается в lib.rs → setup()) отключается
- * Same-Origin Policy для этого webview, что позволяет из top-frame скрипта
- * получать доступ к contentDocument/contentWindow любого iframe.
+ * С флагами --disable-web-security и --disable-site-isolation-trials
+ * (устанавливаются через WebviewBuilder::additional_browser_args() в lib.rs)
+ * отключается Same-Origin Policy для этого webview, что позволяет из top-frame
+ * скрипта получать доступ к contentDocument/contentWindow любого iframe.
  *
  * MutationObserver устанавливается как на top-level document.body, так и
  * на body каждого найденного iframe для отслеживания динамически создаваемых
@@ -290,6 +291,81 @@
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // Диагностика доступа к iframe (CORS test)
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Пытается получить contentDocument для каждого iframe на странице.
+  // Если --disable-web-security работает, все iframe должны быть доступны.
+  // Результаты сохраняются в __browserData.iframeAccess и читаются
+  // Rust-поллингом через eval_with_callback.
+  function testIframeAccess() {
+    var results = [];
+    var iframes = document.querySelectorAll("iframe");
+    for (var i = 0; i < iframes.length; i++) {
+      var iframe = iframes[i];
+      var result = {
+        src: (iframe.src || "").slice(0, 120),
+        accessible: false,
+        hasVideo: false,
+        error: null,
+      };
+      try {
+        var doc =
+          iframe.contentDocument ||
+          (iframe.contentWindow && iframe.contentWindow.document);
+        if (doc) {
+          result.accessible = true;
+          var videos = doc.querySelectorAll("video");
+          result.hasVideo = videos.length > 0;
+          result.videoCount = videos.length;
+          result.hostname = doc.location?.hostname || "unknown";
+        } else {
+          result.error = "contentDocument is null";
+        }
+      } catch (e) {
+        result.error = e.message || String(e);
+        // Если ошибка содержит "Blocked" — это CORS
+        if (result.error.indexOf("Blocked") !== -1) {
+          result.corsError = true;
+        }
+      }
+      results.push(result);
+    }
+
+    window.__browserData.iframeAccess = results;
+    window.__browserData.corsBlocked = results.some(function (r) {
+      return r.corsError === true;
+    });
+
+    var accessible = results.filter(function (r) {
+      return r.accessible;
+    }).length;
+    var withVideo = results.filter(function (r) {
+      return r.hasVideo;
+    }).length;
+    log(
+      "info",
+      "Iframe access test: " +
+        results.length +
+        " iframes, " +
+        accessible +
+        " accessible, " +
+        withVideo +
+        " with video" +
+        (window.__browserData.corsBlocked ? " (CORS BLOCKED!)" : " (CORS disabled)"),
+    );
+
+    // Если есть CORS-блокировки — логируем детали
+    if (window.__browserData.corsBlocked) {
+      results.forEach(function (r) {
+        if (r.corsError) {
+          log("warn", "CORS blocked iframe: " + r.src, { error: r.error });
+        }
+      });
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // Очистка всех Observer'ов
   // ═══════════════════════════════════════════════════════════════════
@@ -326,6 +402,11 @@
     } else {
       log("info", "No video found during initial scan, waiting for dynamic changes");
     }
+
+    // Диагностика доступа к iframe (CORS test)
+    // Если --disable-web-security работает корректно, все iframe
+    // должны быть accessible. Результаты читаются Rust-поллингом.
+    testIframeAccess();
 
     // Периодическая проверка (резервный механизм, пока Rust-поллинг не подхватит)
     pollTimer = setInterval(function () {

@@ -64,9 +64,46 @@ async fn create_browser_webview(
         "[Rust] Building webview '{}' with on_page_load callback", label
     );
 
-    let builder = WebviewBuilder::new(&label, tauri::WebviewUrl::External(parsed_url))
-        .initialization_script(preload)
-        .on_page_load(move |webview, payload| {
+    // ── Строим WebviewBuilder ──────────────────────────────────────
+    let mut builder = WebviewBuilder::new(&label, tauri::WebviewUrl::External(parsed_url))
+        .initialization_script(preload);
+
+    // ═══════════════════════════════════════════════════════════════
+    // Windows: отключаем веб-защиту для доступа к кросс-доменным iframe
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // Без этих флагов WebView2 блокирует доступ к contentDocument
+    // iframe, загружающих контент с другого origin (CORS).
+    // Это необходимо для парсинга <video>-элементов внутри сторонних
+    // плееров (Bazon, Collaps, VideoDB и т.д.).
+    //
+    // Флаги:
+    //   --disable-web-security           — отключает Same-Origin Policy
+    //   --disable-site-isolation-trials  — отключает изоляцию сайтов
+    //   --user-data-dir                  — отдельный профиль (обязателен
+    //                                      при отключении безопасности)
+    //   --allow-running-insecure-content — разрешает mixed content
+    //
+    // Каждый экземпляр браузера получает свою директорию профиля
+    // (watchme-browser-{label}) внутри временной папки ОС.
+    #[cfg(target_os = "windows")]
+    {
+        let mut data_dir = std::env::temp_dir();
+        data_dir.push(format!("watchme-browser-{}", label));
+        let _ = std::fs::create_dir_all(&data_dir);
+
+        let args = format!(
+            "--disable-web-security --disable-site-isolation-trials --allow-running-insecure-content --user-data-dir=\"{}\"",
+            data_dir.display()
+        );
+        println!("[Rust] 🛡️ Browser webview additional args: {}", args);
+        builder = builder.additional_browser_args(&args);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // on_page_load — запускает поллинг и инжект сниффера
+    // ═══════════════════════════════════════════════════════════════
+    let builder = builder.on_page_load(move |webview, payload| {
             page_loaded_diag.store(true, Ordering::Relaxed);
             println!("[Rust] 🔥 Page load event FIRED: {}", payload.url());
 
@@ -192,11 +229,20 @@ async fn create_browser_webview(
                                     height: f.height
                                 });
                             }
+                            // ── Iframe access diagnostics (CORS test) ──
+                            // Заполняется preload-скриптом в testIframeAccess()
+                            // Если --disable-web-security работает, все iframe
+                            // должны быть accessible: true
+                            var iframeAccess = d.iframeAccess || [];
+                            var corsBlocked = d.corsBlocked || false;
+
                             return JSON.stringify({
                                 videoUrls: d.videoUrls || [],
                                 video: videoInfo,
                                 frames: frames,
-                                title: document.title || ''
+                                title: document.title || '',
+                                iframeAccess: iframeAccess,
+                                corsBlocked: corsBlocked
                             });
                         })();
                     "#;
@@ -321,6 +367,41 @@ async fn create_browser_webview(
                                     serde_json::json!({"frames": frames}),
                                 );
                                 snap.last_frame_count = frames.len();
+                            }
+                        }
+
+                        // ── Iframe access diagnostic (CORS test) ──
+                        if let Some(access) = data.get("iframeAccess").and_then(|a| a.as_array()) {
+                            let cors_blocked = data
+                                .get("corsBlocked")
+                                .and_then(|c| c.as_bool())
+                                .unwrap_or(false);
+                            if cors_blocked {
+                                // Если CORS всё ещё блокирует — выводим детали
+                                let blocked: Vec<&str> = access
+                                    .iter()
+                                    .filter_map(|entry| {
+                                        let acc = entry.get("accessible").and_then(|a| a.as_bool()).unwrap_or(false);
+                                        if !acc {
+                                            entry.get("src").and_then(|s| s.as_str())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                                if !blocked.is_empty() {
+                                    println!("[Rust] ⚠️ CORS still blocking {} iframe(s): {:?}", blocked.len(), blocked);
+                                }
+                            } else if access.len() > 0 {
+                                let accessible_count = access
+                                    .iter()
+                                    .filter(|entry| entry.get("accessible").and_then(|a| a.as_bool()).unwrap_or(false))
+                                    .count();
+                                println!(
+                                    "[Rust] 🔓 Iframe access: {}/{} accessible (CORS disabled)",
+                                    accessible_count,
+                                    access.len()
+                                );
                             }
                         }
                     });
@@ -472,24 +553,17 @@ pub fn run() {
             eval_in_browser,
         ])
         .setup(|app| {
-            // Устанавливаем --disable-web-security ДО создания любого webview.
-            // WebView2 читает WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS только при первом
-            // создании среды WebView2.
-            #[cfg(target_os = "windows")]
-            {
-                let current =
-                    std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
-                println!("[Rust] WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS (setup): {:?}", current);
-                if !current.contains("--disable-web-security") {
-                    let new_val = if current.is_empty() {
-                        "--disable-web-security".to_string()
-                    } else {
-                        format!("{} --disable-web-security", current)
-                    };
-                    std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", &new_val);
-                    println!("[Rust] Set in setup(): {:?}", new_val);
-                }
-            }
+            // ── Флаги безопасности для дочернего webview ─────────────
+            //
+            // Флаги WebView2 (--disable-web-security, --disable-site-isolation-trials)
+            // теперь устанавливаются через WebviewBuilder::additional_browser_args()
+            // в create_browser_webview() для каждого дочернего webview индивидуально.
+            //
+            // Это предпочтительнее глобальной env-переменной
+            // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, так как:
+            //   1. Действует ТОЛЬКО на дочерний browser webview, не затрагивая главное окно
+            //   2. Каждый экземпляр получает отдельный --user-data-dir
+            //   3. Не зависит от времени создания WebView2 Environment
 
             #[cfg(debug_assertions)]
             {
