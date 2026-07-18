@@ -117,6 +117,11 @@ export default function BrowserPlayer({ roomId }) {
   const [showFrames, setShowFrames] = useState(false); // показать список iframe
   const [logs, setLogs] = useState([]); // последние логи из preload
 
+  // ── Loading overlay — скрывает placeholder пока webview грузится,
+  //    автоматически убирается через 3 секунды (fallback).
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const loadingOverlayTimerRef = useRef(null);
+
   // ── Sniffed video URLs (from Rust network sniffer) ──────────
   const [sniffedUrls, setSniffedUrls] = useState([]);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState("");
@@ -133,6 +138,16 @@ export default function BrowserPlayer({ roomId }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
 
+  // Скрывает loading overlay и очищает таймер.
+  // Вызывается при первом полезном IPC-событии от webview.
+  const dismissLoadingOverlay = useCallback(() => {
+    setShowLoadingOverlay(false);
+    if (loadingOverlayTimerRef.current) {
+      clearTimeout(loadingOverlayTimerRef.current);
+      loadingOverlayTimerRef.current = null;
+    }
+  }, []);
+
   // ================================================================
   // 1. Создание / обновление дочернего webview
   // ================================================================
@@ -148,6 +163,18 @@ export default function BrowserPlayer({ roomId }) {
     setPlayerInfo("Loading...");
     setFrames([]);
     setLogs([]);
+
+    // Показываем loading overlay над placeholder
+    setShowLoadingOverlay(true);
+
+    // Fallback: принудительно убираем overlay через 3 секунды,
+    // даже если on_page_load / polling не сработали.
+    if (loadingOverlayTimerRef.current) {
+      clearTimeout(loadingOverlayTimerRef.current);
+    }
+    loadingOverlayTimerRef.current = setTimeout(() => {
+      setShowLoadingOverlay(false);
+    }, 3000);
 
     try {
       // Закрываем существующий webview (если есть)
@@ -175,6 +202,11 @@ export default function BrowserPlayer({ roomId }) {
       console.error("[BrowserPlayer] Failed to create webview:", err);
       setPlayerInfo(`Error: ${err}`);
       isWebviewReady.current = false;
+      // При ошибке сразу убираем overlay
+      setShowLoadingOverlay(false);
+      if (loadingOverlayTimerRef.current) {
+        clearTimeout(loadingOverlayTimerRef.current);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -260,10 +292,11 @@ export default function BrowserPlayer({ roomId }) {
     async function setupListeners() {
       console.log("[BrowserPlayer:D] Setting up event listeners...");
 
-      // play
+      // play — первое признак, что webview жив и работает
       const unsubPlay = await listen(
         "browser-video-play",
         (event) => {
+          dismissLoadingOverlay();
           console.log("[BrowserPlayer:D] Received browser-video-play:", event.payload);
           setVideoFound(true);
           setPlayerInfo("▶ Playing");
@@ -314,6 +347,7 @@ export default function BrowserPlayer({ roomId }) {
       const unsubFound = await listen(
         "browser-video-found",
         (event) => {
+          dismissLoadingOverlay();
           console.log("[BrowserPlayer:D] Received browser-video-found:", event.payload);
           if (event.payload?.found) {
             setVideoFound(true);
@@ -330,6 +364,7 @@ export default function BrowserPlayer({ roomId }) {
       const unsubFrames = await listen(
         "browser-frame-info",
         (event) => {
+          dismissLoadingOverlay();
           const frameList = event.payload?.frames || [];
           console.log("[BrowserPlayer:D] Received browser-frame-info:", frameList.length, "frames");
           setFrames(frameList);
@@ -363,6 +398,7 @@ export default function BrowserPlayer({ roomId }) {
       const unsubVideoUrl = await listen(
         "browser-video-url",
         (event) => {
+          dismissLoadingOverlay();
           const { url } = event.payload || {};
           if (!url) return;
           console.log("[BrowserPlayer:D] 🎬 Sniffed video URL:", url);
@@ -404,6 +440,10 @@ export default function BrowserPlayer({ roomId }) {
 
     return () => {
       console.log("[BrowserPlayer:D] Cleaning up event listeners");
+      if (loadingOverlayTimerRef.current) {
+        clearTimeout(loadingOverlayTimerRef.current);
+        loadingOverlayTimerRef.current = null;
+      }
       unlisteners.forEach((fn) => fn());
     };
   }, [updatePlayerState]);
@@ -921,6 +961,17 @@ export default function BrowserPlayer({ roomId }) {
             <span className="text-sm">Enter a URL to start browsing</span>
           </div>
         ) : null}
+
+        {/* ── Loading overlay — скрывает placeholder пока webview
+              загружается. Автоматически убирается через 3s (fallback)
+              или при первом IPC-событии от polling/sniffer.         */}
+        {showLoadingOverlay && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 z-10 backdrop-blur-sm transition-opacity duration-300">
+            <div className="w-10 h-10 border-[3px] border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin mb-3" />
+            <span className="text-sm text-zinc-400 font-medium">Loading page...</span>
+            <span className="text-xs text-zinc-600 mt-1">WebView starting up</span>
+          </div>
+        )}
       </div>
 
       {/* ── Sniffed Video Streams (from Rust network sniffer) ── */}

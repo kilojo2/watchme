@@ -48,20 +48,10 @@ async fn create_browser_webview(
 
     // Флаг остановки поллинга (устанавливается при уничтожении webview)
     let stop_polling = Arc::new(AtomicBool::new(false));
-
-    // Флаг: запущен ли уже поллинг? (on_page_load может вызваться многократно)
-    let poll_started = Arc::new(AtomicBool::new(false));
-    let app_for_poll = app.clone();
-    let label_for_poll = label.clone();
     let stop_polling_clone = stop_polling.clone();
-    let poll_started_clone = poll_started.clone();
-
-    // Флаг для диагностики: был ли вызван on_page_load
-    let page_loaded = Arc::new(AtomicBool::new(false));
-    let page_loaded_diag = page_loaded.clone();
 
     println!(
-        "[Rust] Building webview '{}' with on_page_load callback", label
+        "[Rust] Building webview '{}'", label
     );
 
     // ── Строим WebviewBuilder ──────────────────────────────────────
@@ -101,315 +91,15 @@ async fn create_browser_webview(
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // on_page_load — запускает поллинг и инжект сниффера
+    // on_page_load — только логирование.
+    // Поллинг + сниффер НЕ запускаются здесь, т.к. Tauri v2
+    // может не вызывать этот колбэк для внешних URL в дочерних
+    // webview. Вместо этого всё стартует в отдельном потоке
+    // сразу после add_child().
     // ═══════════════════════════════════════════════════════════════
-    let builder = builder.on_page_load(move |webview, payload| {
-            page_loaded_diag.store(true, Ordering::Relaxed);
-            println!("[Rust] 🔥 Page load event FIRED: {}", payload.url());
-
-            // Запускаем sniffer + поллинг ТОЛЬКО один раз (при первой загрузке)
-            if poll_started_clone.swap(true, Ordering::Relaxed) {
-                return; // Уже запущено — игнорируем повторные вызовы
-            }
-
-            // 1. Инжектим JS для перехвата fetch/XHR (network sniffing на JS-уровне)
-            let sniff_js = r#"
-                (function() {
-                    if (window.__browserSnifferInstalled) return;
-                    window.__browserSnifferInstalled = true;
-                    window.__browserData = window.__browserData || {};
-                    window.__browserData.videoUrls = window.__browserData.videoUrls || [];
-
-                    var VIDEO_PATTERNS = [
-                        '.m3u8', '.mp4', '.webm', 'videoplayback',
-                        '.m3u8?', '/hls/', '/manifest/', '/playlist.',
-                        'dash.', '.mpd', '/master', 'playlist_url',
-                        'video_url', 'stream', '/player', '.m3u',
-                        'media/', 'content/', '/embed'
-                    ];
-
-                    function isVideoUrl(urlStr) {
-                        if (!urlStr || typeof urlStr !== 'string') return false;
-                        for (var i = 0; i < VIDEO_PATTERNS.length; i++) {
-                            if (urlStr.indexOf(VIDEO_PATTERNS[i]) !== -1) return true;
-                        }
-                        return false;
-                    }
-
-                    function addVideoUrl(urlStr) {
-                        if (isVideoUrl(urlStr) && window.__browserData.videoUrls.indexOf(urlStr) === -1) {
-                            window.__browserData.videoUrls.push(urlStr);
-                            console.log('[BrowserSniffer] 🎬', urlStr.slice(0, 120));
-                        }
-                    }
-
-                    // Override fetch
-                    var origFetch = window.fetch;
-                    window.fetch = function(url, init) {
-                        var urlStr = (typeof url === 'string' ? url : (url && url.url) || '').toString();
-                        addVideoUrl(urlStr);
-                        return origFetch.call(this, url, init);
-                    };
-
-                    // Override XMLHttpRequest
-                    var origOpen = XMLHttpRequest.prototype.open;
-                    XMLHttpRequest.prototype.open = function(method, url) {
-                        var urlStr = (typeof url === 'string' ? url : url.toString());
-                        addVideoUrl(urlStr);
-                        return origOpen.apply(this, arguments);
-                    };
-
-                    console.log('[BrowserSniffer] Network sniffing installed');
-                })();
-            "#;
-            let _ = webview.eval(sniff_js);
-
-            // 2. Запускаем поллинг с eval_with_callback (с задержкой для загрузки страницы)
-            let app_poll = app_for_poll.clone();
-            let label_poll = label_for_poll.clone();
-            let stop = stop_polling_clone.clone();
-
-            std::thread::spawn(move || {
-                // Даём странице время на загрузку + выполнение preload-скрипта
-                std::thread::sleep(std::time::Duration::from_secs(2));
-
-                let shared = Arc::new(Mutex::new(BrowserSnapshot::default()));
-
-                println!("[Rust] Polling started for webview: {}", label_poll);
-
-                loop {
-                    // Проверяем, не пора ли остановиться
-                    if stop.load(Ordering::Relaxed) {
-                        break;
-                    }
-
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-
-                    // Проверяем, жив ли ещё webview
-                    let window = match app_poll.get_window("main") {
-                        Some(w) => w,
-                        None => {
-                            println!("[Rust] Main window gone, stopping poll for {}", label_poll);
-                            break;
-                        }
-                    };
-                    let webview = match window.get_webview(&label_poll) {
-                        Some(w) => w,
-                        None => {
-                            println!("[Rust] Webview '{}' gone, stopping poll", label_poll);
-                            break;
-                        }
-                    };
-
-                    let poll_js = r#"
-                        (function() {
-                            var d = window.__browserData || {};
-                            var videos = document.querySelectorAll('video');
-                            var videoInfo = null;
-                            if (videos.length > 0) {
-                                var v = videos[0];
-                                videoInfo = {
-                                    found: true,
-                                    src: v.src || v.currentSrc || '',
-                                    duration: v.duration || 0,
-                                    currentTime: v.currentTime || 0,
-                                    paused: v.paused,
-                                    readyState: v.readyState
-                                };
-                            }
-                            var frames = [];
-                            var allIframes = document.querySelectorAll('iframe');
-                            for (var i = 0; i < allIframes.length; i++) {
-                                var f = allIframes[i];
-                                frames.push({
-                                    src: f.src || '',
-                                    id: f.id || '',
-                                    className: (f.className || '').slice(0, 100),
-                                    width: f.width,
-                                    height: f.height
-                                });
-                            }
-                            // ── Iframe access diagnostics (CORS test) ──
-                            // Заполняется preload-скриптом в testIframeAccess()
-                            // Если --disable-web-security работает, все iframe
-                            // должны быть accessible: true
-                            var iframeAccess = d.iframeAccess || [];
-                            var corsBlocked = d.corsBlocked || false;
-
-                            return JSON.stringify({
-                                videoUrls: d.videoUrls || [],
-                                video: videoInfo,
-                                frames: frames,
-                                title: document.title || '',
-                                iframeAccess: iframeAccess,
-                                corsBlocked: corsBlocked
-                            });
-                        })();
-                    "#;
-
-                    let state = shared.clone();
-                    let app_emit = app_poll.clone();
-
-                    let _ = webview.eval_with_callback(poll_js.to_string(), move |result| {
-                        if result.is_empty() || result == "null" || result == "undefined" {
-                            return;
-                        }
-
-                        let data: serde_json::Value = match serde_json::from_str(&result) {
-                            Ok(v) => v,
-                            Err(_) => return,
-                        };
-
-                        let mut snap = match state.lock() {
-                            Ok(s) => s,
-                            Err(_) => return,
-                        };
-
-                        // ── Video URLs (network sniffing) ──
-                        if let Some(urls) = data.get("videoUrls").and_then(|u| u.as_array()) {
-                            let current: Vec<String> = urls
-                                .iter()
-                                .filter_map(|u| u.as_str().map(String::from))
-                                .collect();
-
-                            for url_str in &current {
-                                if !snap.last_video_urls.contains(url_str) {
-                                    println!("[Rust] 🎬 Video URL: {}", url_str);
-                                    let _ = app_emit.emit(
-                                        "browser-video-url",
-                                        serde_json::json!({"url": url_str}),
-                                    );
-                                }
-                            }
-                            snap.last_video_urls = current;
-                        }
-
-                        // ── Video element state ──
-                        if let Some(video) = data.get("video") {
-                            let found = video
-                                .get("found")
-                                .and_then(|f| f.as_bool())
-                                .unwrap_or(false);
-                            let paused = video
-                                .get("paused")
-                                .and_then(|p| p.as_bool())
-                                .unwrap_or(true);
-                            let current_time = video
-                                .get("currentTime")
-                                .and_then(|c| c.as_f64())
-                                .unwrap_or(0.0);
-                            let src = video
-                                .get("src")
-                                .and_then(|s| s.as_str())
-                                .unwrap_or("")
-                                .to_string();
-
-                            let is_playing = found && !paused;
-
-                            // Video appeared
-                            if found && !snap.last_video_found {
-                                println!("[Rust] 🎥 Video found (src={})", src);
-                                let _ = app_emit.emit(
-                                    "browser-video-found",
-                                    serde_json::json!({"found": true, "src": src}),
-                                );
-                            }
-                            // Video disappeared
-                            if !found && snap.last_video_found {
-                                println!("[Rust] 🎥 Video lost");
-                                let _ = app_emit.emit(
-                                    "browser-video-found",
-                                    serde_json::json!({"found": false}),
-                                );
-                            }
-
-                            if found {
-                                // Started playing
-                                if is_playing && !snap.last_is_playing {
-                                    println!("[Rust] ▶ Play at {}", current_time);
-                                    let _ = app_emit.emit(
-                                        "browser-video-play",
-                                        serde_json::json!({"currentTime": current_time}),
-                                    );
-                                }
-                                // Paused
-                                if !is_playing && snap.last_is_playing {
-                                    println!("[Rust] ⏸ Pause at {}", current_time);
-                                    let _ = app_emit.emit(
-                                        "browser-video-pause",
-                                        serde_json::json!({"currentTime": current_time}),
-                                    );
-                                }
-                                // Seek (time jump > 2s)
-                                if found
-                                    && (current_time - snap.last_current_time).abs() > 2.0
-                                    && is_playing == snap.last_is_playing
-                                {
-                                    println!("[Rust] ⏩ Seek to {}", current_time);
-                                    let _ = app_emit.emit(
-                                        "browser-video-seek",
-                                        serde_json::json!({"currentTime": current_time}),
-                                    );
-                                }
-
-                                snap.last_current_time = current_time;
-                            }
-
-                            snap.last_video_found = found;
-                            snap.last_is_playing = is_playing;
-                        }
-
-                        // ── Frame info ──
-                        if let Some(frames) = data.get("frames").and_then(|f| f.as_array()) {
-                            if frames.len() != snap.last_frame_count {
-                                let _ = app_emit.emit(
-                                    "browser-frame-info",
-                                    serde_json::json!({"frames": frames}),
-                                );
-                                snap.last_frame_count = frames.len();
-                            }
-                        }
-
-                        // ── Iframe access diagnostic (CORS test) ──
-                        if let Some(access) = data.get("iframeAccess").and_then(|a| a.as_array()) {
-                            let cors_blocked = data
-                                .get("corsBlocked")
-                                .and_then(|c| c.as_bool())
-                                .unwrap_or(false);
-                            if cors_blocked {
-                                // Если CORS всё ещё блокирует — выводим детали
-                                let blocked: Vec<&str> = access
-                                    .iter()
-                                    .filter_map(|entry| {
-                                        let acc = entry.get("accessible").and_then(|a| a.as_bool()).unwrap_or(false);
-                                        if !acc {
-                                            entry.get("src").and_then(|s| s.as_str())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect();
-                                if !blocked.is_empty() {
-                                    println!("[Rust] ⚠️ CORS still blocking {} iframe(s): {:?}", blocked.len(), blocked);
-                                }
-                            } else if access.len() > 0 {
-                                let accessible_count = access
-                                    .iter()
-                                    .filter(|entry| entry.get("accessible").and_then(|a| a.as_bool()).unwrap_or(false))
-                                    .count();
-                                println!(
-                                    "[Rust] 🔓 Iframe access: {}/{} accessible (CORS disabled)",
-                                    accessible_count,
-                                    access.len()
-                                );
-                            }
-                        }
-                    });
-                }
-
-                println!("[Rust] Polling stopped for webview: {}", label_poll);
-            });
-        });
+    let builder = builder.on_page_load(move |_webview, payload| {
+        println!("[Rust] 🔥 Page load event FIRED: {}", payload.url());
+    });
 
     // Позиционируем
     let position = tauri::LogicalPosition::new(x, y);
@@ -421,31 +111,311 @@ async fn create_browser_webview(
         .map_err(|e| format!("Failed to create child webview: {}", e))?;
     println!("[Rust] Child webview created successfully!");
 
-    // ── Diagnostic: таймаут 10s для проверки, сработал ли on_page_load ──
-    let app_diag = app.clone();
-    let label_diag = label.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(10));
+    // ═══════════════════════════════════════════════════════════════
+    // Поллинг + сниффер — запускаем ВНЕ on_page_load, чтобы
+    // гарантировать работу даже если Tauri v2 не вызывает
+    // on_page_load для внешних URL в дочерних webview.
+    // ═══════════════════════════════════════════════════════════════
+    let app_poll = app.clone();
+    let label_poll = label.clone();
+    let stop = stop_polling_clone.clone();
 
-        if !page_loaded.load(Ordering::Relaxed) {
-            println!(
-                "[Rust] ⚠️ DIAGNOSTIC: on_page_load did NOT fire for '{}' within 10s!",
-                label_diag
-            );
-            let _ = app_diag.emit(
-                "browser-diagnostic",
-                serde_json::json!({
-                    "type": "on_page_load_timeout",
-                    "label": label_diag,
-                    "message": "on_page_load callback never fired. This may mean Tauri v2 doesn't fire page load events for child webviews with external URLs."
-                }),
-            );
-        } else {
-            println!(
-                "[Rust] ✓ DIAGNOSTIC: on_page_load fired for '{}' within 10s",
-                label_diag
-            );
+    std::thread::spawn(move || {
+        // Даём странице время на начальную загрузку
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        let shared = Arc::new(Mutex::new(BrowserSnapshot::default()));
+
+        // Получаем webview по label
+        let window = match app_poll.get_window("main") {
+            Some(w) => w,
+            None => {
+                println!("[Rust] Main window gone, cannot start poll for {}", label_poll);
+                return;
+            }
+        };
+        let webview = match window.get_webview(&label_poll) {
+            Some(w) => w,
+            None => {
+                println!("[Rust] Webview '{}' not found, cannot start poll", label_poll);
+                return;
+            }
+        };
+
+        // Инжектим сниффер fetch/XHR
+        let sniff_js = r#"
+            (function() {
+                if (window.__browserSnifferInstalled) return;
+                window.__browserSnifferInstalled = true;
+                window.__browserData = window.__browserData || {};
+                window.__browserData.videoUrls = window.__browserData.videoUrls || [];
+
+                var VIDEO_PATTERNS = [
+                    '.m3u8', '.mp4', '.webm', 'videoplayback',
+                    '.m3u8?', '/hls/', '/manifest/', '/playlist.',
+                    'dash.', '.mpd', '/master', 'playlist_url',
+                    'video_url', 'stream', '/player', '.m3u',
+                    'media/', 'content/', '/embed'
+                ];
+
+                function isVideoUrl(urlStr) {
+                    if (!urlStr || typeof urlStr !== 'string') return false;
+                    for (var i = 0; i < VIDEO_PATTERNS.length; i++) {
+                        if (urlStr.indexOf(VIDEO_PATTERNS[i]) !== -1) return true;
+                    }
+                    return false;
+                }
+
+                function addVideoUrl(urlStr) {
+                    if (isVideoUrl(urlStr) && window.__browserData.videoUrls.indexOf(urlStr) === -1) {
+                        window.__browserData.videoUrls.push(urlStr);
+                        console.log('[BrowserSniffer] 🎬', urlStr.slice(0, 120));
+                    }
+                }
+
+                var origFetch = window.fetch;
+                window.fetch = function(url, init) {
+                    var urlStr = (typeof url === 'string' ? url : (url && url.url) || '').toString();
+                    addVideoUrl(urlStr);
+                    return origFetch.call(this, url, init);
+                };
+
+                var origOpen = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    var urlStr = (typeof url === 'string' ? url : url.toString());
+                    addVideoUrl(urlStr);
+                    return origOpen.apply(this, arguments);
+                };
+
+                console.log('[BrowserSniffer] Network sniffing installed');
+            })();
+        "#;
+        let _ = webview.eval(sniff_js);
+
+        println!("[Rust] Polling started for webview: {}", label_poll);
+
+        // ── Основной цикл поллинга ──
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(500));
+
+            // Проверяем, жив ли ещё webview
+            let window = match app_poll.get_window("main") {
+                Some(w) => w,
+                None => {
+                    println!("[Rust] Main window gone, stopping poll for {}", label_poll);
+                    break;
+                }
+            };
+            let webview = match window.get_webview(&label_poll) {
+                Some(w) => w,
+                None => {
+                    println!("[Rust] Webview '{}' gone, stopping poll", label_poll);
+                    break;
+                }
+            };
+
+            let poll_js = r#"
+                (function() {
+                    var d = window.__browserData || {};
+                    var videos = document.querySelectorAll('video');
+                    var videoInfo = null;
+                    if (videos.length > 0) {
+                        var v = videos[0];
+                        videoInfo = {
+                            found: true,
+                            src: v.src || v.currentSrc || '',
+                            duration: v.duration || 0,
+                            currentTime: v.currentTime || 0,
+                            paused: v.paused,
+                            readyState: v.readyState
+                        };
+                    }
+                    var frames = [];
+                    var allIframes = document.querySelectorAll('iframe');
+                    for (var i = 0; i < allIframes.length; i++) {
+                        var f = allIframes[i];
+                        frames.push({
+                            src: f.src || '',
+                            id: f.id || '',
+                            className: (f.className || '').slice(0, 100),
+                            width: f.width,
+                            height: f.height
+                        });
+                    }
+                    // ── Iframe access diagnostics (CORS test) ──
+                    var iframeAccess = d.iframeAccess || [];
+                    var corsBlocked = d.corsBlocked || false;
+
+                    return JSON.stringify({
+                        videoUrls: d.videoUrls || [],
+                        video: videoInfo,
+                        frames: frames,
+                        title: document.title || '',
+                        iframeAccess: iframeAccess,
+                        corsBlocked: corsBlocked
+                    });
+                })();
+            "#;
+
+            let state = shared.clone();
+            let app_emit = app_poll.clone();
+
+            let _ = webview.eval_with_callback(poll_js.to_string(), move |result| {
+                if result.is_empty() || result == "null" || result == "undefined" {
+                    return;
+                }
+
+                let data: serde_json::Value = match serde_json::from_str(&result) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+
+                let mut snap = match state.lock() {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+
+                // ── Video URLs (network sniffing) ──
+                if let Some(urls) = data.get("videoUrls").and_then(|u| u.as_array()) {
+                    let current: Vec<String> = urls
+                        .iter()
+                        .filter_map(|u| u.as_str().map(String::from))
+                        .collect();
+
+                    for url_str in &current {
+                        if !snap.last_video_urls.contains(url_str) {
+                            println!("[Rust] 🎬 Video URL: {}", url_str);
+                            let _ = app_emit.emit(
+                                "browser-video-url",
+                                serde_json::json!({"url": url_str}),
+                            );
+                        }
+                    }
+                    snap.last_video_urls = current;
+                }
+
+                // ── Video element state ──
+                if let Some(video) = data.get("video") {
+                    let found = video
+                        .get("found")
+                        .and_then(|f| f.as_bool())
+                        .unwrap_or(false);
+                    let paused = video
+                        .get("paused")
+                        .and_then(|p| p.as_bool())
+                        .unwrap_or(true);
+                    let current_time = video
+                        .get("currentTime")
+                        .and_then(|c| c.as_f64())
+                        .unwrap_or(0.0);
+                    let src = video
+                        .get("src")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let is_playing = found && !paused;
+
+                    if found && !snap.last_video_found {
+                        println!("[Rust] 🎥 Video found (src={})", src);
+                        let _ = app_emit.emit(
+                            "browser-video-found",
+                            serde_json::json!({"found": true, "src": src}),
+                        );
+                    }
+                    if !found && snap.last_video_found {
+                        println!("[Rust] 🎥 Video lost");
+                        let _ = app_emit.emit(
+                            "browser-video-found",
+                            serde_json::json!({"found": false}),
+                        );
+                    }
+
+                    if found {
+                        if is_playing && !snap.last_is_playing {
+                            println!("[Rust] ▶ Play at {}", current_time);
+                            let _ = app_emit.emit(
+                                "browser-video-play",
+                                serde_json::json!({"currentTime": current_time}),
+                            );
+                        }
+                        if !is_playing && snap.last_is_playing {
+                            println!("[Rust] ⏸ Pause at {}", current_time);
+                            let _ = app_emit.emit(
+                                "browser-video-pause",
+                                serde_json::json!({"currentTime": current_time}),
+                            );
+                        }
+                        if found
+                            && (current_time - snap.last_current_time).abs() > 2.0
+                            && is_playing == snap.last_is_playing
+                        {
+                            println!("[Rust] ⏩ Seek to {}", current_time);
+                            let _ = app_emit.emit(
+                                "browser-video-seek",
+                                serde_json::json!({"currentTime": current_time}),
+                            );
+                        }
+
+                        snap.last_current_time = current_time;
+                    }
+
+                    snap.last_video_found = found;
+                    snap.last_is_playing = is_playing;
+                }
+
+                // ── Frame info ──
+                if let Some(frames) = data.get("frames").and_then(|f| f.as_array()) {
+                    if frames.len() != snap.last_frame_count {
+                        let _ = app_emit.emit(
+                            "browser-frame-info",
+                            serde_json::json!({"frames": frames}),
+                        );
+                        snap.last_frame_count = frames.len();
+                    }
+                }
+
+                // ── Iframe access diagnostic ──
+                if let Some(access) = data.get("iframeAccess").and_then(|a| a.as_array()) {
+                    let cors_blocked = data
+                        .get("corsBlocked")
+                        .and_then(|c| c.as_bool())
+                        .unwrap_or(false);
+                    if cors_blocked {
+                        let blocked: Vec<&str> = access
+                            .iter()
+                            .filter_map(|entry| {
+                                let acc = entry.get("accessible").and_then(|a| a.as_bool()).unwrap_or(false);
+                                if !acc {
+                                    entry.get("src").and_then(|s| s.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        if !blocked.is_empty() {
+                            println!("[Rust] ⚠️ CORS still blocking {} iframe(s): {:?}", blocked.len(), blocked);
+                        }
+                    } else if access.len() > 0 {
+                        let accessible_count = access
+                            .iter()
+                            .filter(|entry| entry.get("accessible").and_then(|a| a.as_bool()).unwrap_or(false))
+                            .count();
+                        println!(
+                            "[Rust] 🔓 Iframe access: {}/{} accessible (CORS disabled)",
+                            accessible_count,
+                            access.len()
+                        );
+                    }
+                }
+            });
         }
+
+        println!("[Rust] Polling stopped for webview: {}", label_poll);
     });
 
     Ok(())
