@@ -107,6 +107,7 @@ export default function BrowserPlayer({ roomId }) {
   const currentUrlRef = useRef("");
   const roomStateRef = useRef(null);
   const isWebviewReady = useRef(false);
+  const isCreatingRef = useRef(false); // guard от повторного создания
 
   // ── State ───────────────────────────────────────────────────
   const [url, setUrl] = useState("");
@@ -152,17 +153,32 @@ export default function BrowserPlayer({ roomId }) {
   // 1. Создание / обновление дочернего webview
   // ================================================================
   const createWebview = useCallback(async (targetUrl) => {
+    // Guard: предотвращаем повторное создание, пока предыдущее в процессе
+    if (isCreatingRef.current) {
+      console.log("[BrowserPlayer] ⏭ Skipping createWebview — already creating");
+      return;
+    }
+
     const placeholder = placeholderRef.current;
     if (!placeholder) return;
 
     const rect = placeholder.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+
+    // Guard: проверяем, что placeholder имеет реальные размеры
+    if (rect.width < 1 || rect.height < 1) {
+      console.warn("[BrowserPlayer] ⚠️ Placeholder has zero dimensions, retrying in 100ms", rect);
+      setTimeout(() => createWebview(targetUrl), 100);
+      return;
+    }
+
+    console.log("[BrowserPlayer] 📐 Placeholder rect:", rect);
 
     setIsLoading(true);
     setVideoFound(false);
     setPlayerInfo("Loading...");
     setFrames([]);
     setLogs([]);
+    isCreatingRef.current = true;
 
     // Показываем loading overlay над placeholder
     setShowLoadingOverlay(true);
@@ -187,13 +203,16 @@ export default function BrowserPlayer({ roomId }) {
       }
 
       // Создаём новый
+      // Примечание: getBoundingClientRect() возвращает логические (CSS) пиксели.
+      // Tauri LogicalPosition/LogicalSize также работают в логических пикселях.
+      // НЕ умножаем на devicePixelRatio — Tauri сам конвертирует.
       await invoke("create_browser_webview", {
         url: targetUrl,
         label: WEBVIEW_LABEL,
-        x: rect.left * dpr,
-        y: rect.top * dpr,
-        w: rect.width * dpr,
-        h: rect.height * dpr,
+        x: rect.left,
+        y: rect.top,
+        w: rect.width,
+        h: rect.height,
       });
 
       isWebviewReady.current = true;
@@ -209,6 +228,7 @@ export default function BrowserPlayer({ roomId }) {
       }
     } finally {
       setIsLoading(false);
+      isCreatingRef.current = false;
     }
   }, []);
 
@@ -222,14 +242,13 @@ export default function BrowserPlayer({ roomId }) {
     if (!placeholder) return;
 
     const rect = placeholder.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
 
     invoke("resize_browser_webview", {
       label: WEBVIEW_LABEL,
-      x: rect.left * dpr,
-      y: rect.top * dpr,
-      w: rect.width * dpr,
-      h: rect.height * dpr,
+      x: rect.left,
+      y: rect.top,
+      w: rect.width,
+      h: rect.height,
     }).catch(() => {
       // webview может быть закрыт к моменту выполнения
     });
@@ -454,7 +473,12 @@ export default function BrowserPlayer({ roomId }) {
   // ================================================================
   useEffect(() => {
     const fbUrl = roomState.currentVideoId;
-    if (!fbUrl || fbUrl === currentUrlRef.current) return;
+    // Guard: не пересоздаём webview, если уже создан для этого URL
+    if (!fbUrl) return;
+    if (fbUrl === currentUrlRef.current) return;
+    // Guard: если уже создаём — пропускаем (предотвращает каскад при быстрых
+    // обновлениях Firebase snapshot)
+    if (isCreatingRef.current) return;
 
     currentUrlRef.current = fbUrl;
     setUrl(fbUrl);
@@ -541,8 +565,14 @@ export default function BrowserPlayer({ roomId }) {
   // 9. Cleanup при размонтировании
   // ================================================================
   useEffect(() => {
+    // Cleanup при размонтировании: закрываем webview, сбрасываем guards
     return () => {
       isWebviewReady.current = false;
+      isCreatingRef.current = false;
+      if (loadingOverlayTimerRef.current) {
+        clearTimeout(loadingOverlayTimerRef.current);
+        loadingOverlayTimerRef.current = null;
+      }
       invoke("close_browser_webview", {
         label: WEBVIEW_LABEL,
       }).catch(() => {});

@@ -56,7 +56,9 @@ async fn create_browser_webview(
 
     // ── Строим WebviewBuilder ──────────────────────────────────────
     let mut builder = WebviewBuilder::new(&label, tauri::WebviewUrl::External(parsed_url))
-        .initialization_script(preload);
+        .initialization_script(preload)
+        .focused(true)
+        .auto_resize();
 
     // ═══════════════════════════════════════════════════════════════
     // Windows: отключаем веб-защиту для доступа к кросс-доменным iframe
@@ -106,10 +108,13 @@ async fn create_browser_webview(
     let size = tauri::LogicalSize::new(w, h);
 
     println!("[Rust] Calling window.add_child()...");
-    window
+    let child = window
         .add_child(builder, position, size)
         .map_err(|e| format!("Failed to create child webview: {}", e))?;
     println!("[Rust] Child webview created successfully!");
+
+    // Явно включаем авто-resize, чтобы webview следовал за окном
+    let _ = child.set_auto_resize(true);
 
     // ═══════════════════════════════════════════════════════════════
     // Поллинг + сниффер — запускаем ВНЕ on_page_load, чтобы
