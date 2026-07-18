@@ -9,7 +9,7 @@ import useVideoSync from "../hooks/useVideoSync";
  * modestbranding=1 — минимальный логотип YouTube.
  */
 const YT_OPTS = {
-  height: "480",
+  height: "100%",
   width: "100%",
   playerVars: {
     autoplay: 0,       // автовоспроизведение запрещено — управляем сами
@@ -92,14 +92,15 @@ export default function VideoPlayer({ roomId }) {
   };
 
   // ================================================================
-  // Если videoId не задан — показываем placeholder
+  // Если videoId не задан — показываем placeholder (растягивается flex-1)
   // ================================================================
   if (!roomState.currentVideoId) {
     return (
       <div
         style={{
           width: "100%",
-          height: 480,
+          flex: 1,
+          minHeight: 0,
           background: "#1a1a2e",
           display: "flex",
           alignItems: "center",
@@ -115,7 +116,7 @@ export default function VideoPlayer({ roomId }) {
   }
 
   return (
-    <div style={{ width: "100%", maxWidth: 960, margin: "0 auto" }}>
+    <div style={{ width: "100%", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/*
        * key={roomState.currentVideoId} — принудительно пересоздаёт
        * компонент YouTube при смене видео, чтобы избежать проблем

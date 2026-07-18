@@ -400,8 +400,8 @@ function RoomContent() {
                 </div>
               )}
 
-              {/* YouTube Video Player */}
-              <div className="w-full aspect-video rounded-xl overflow-hidden bg-zinc-900 shadow-lg shadow-black/30 mb-3">
+              {/* YouTube Video Player — растягивается на всю высоту (flex-1) */}
+              <div className="flex-1 w-full min-h-0 rounded-xl overflow-hidden bg-zinc-900 shadow-lg shadow-black/30 mb-3 flex flex-col">
                 <VideoPlayer roomId={currentRoomId} />
               </div>
             </>
@@ -409,7 +409,7 @@ function RoomContent() {
 
           {/* ── Browser Player ────────────────────────────────── */}
           {playerType === "browser" && (
-            <div className="mb-3">
+            <div className="flex-1 w-full min-h-0 mb-3 flex flex-col">
               <BrowserPlayer roomId={currentRoomId} />
             </div>
           )}
