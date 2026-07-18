@@ -228,6 +228,30 @@ export default function BrowserPlayer({ roomId }) {
   );
 
   // ================================================================
+  // 3b. Навигация: Назад / Вперёд / Обновить
+  // ================================================================
+  const handleGoBack = useCallback(() => {
+    invoke("eval_in_browser", {
+      label: WEBVIEW_LABEL,
+      js: "window.history.back()",
+    }).catch(() => {});
+  }, []);
+
+  const handleGoForward = useCallback(() => {
+    invoke("eval_in_browser", {
+      label: WEBVIEW_LABEL,
+      js: "window.history.forward()",
+    }).catch(() => {});
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    invoke("eval_in_browser", {
+      label: WEBVIEW_LABEL,
+      js: "window.location.reload()",
+    }).catch(() => {});
+  }, []);
+
+  // ================================================================
   // 4. Слушаем Tauri IPC события от дочернего webview
   // ================================================================
   useEffect(() => {
@@ -707,9 +731,48 @@ export default function BrowserPlayer({ roomId }) {
   // Render
   // ================================================================
   return (
-    <div ref={containerRef}>
-      {/* ── Address Bar ──────────────────────────────────────── */}
-      <div className="flex gap-2 mb-2">
+    <div ref={containerRef} className="flex flex-col min-h-0 flex-1">
+      {/* ── Address Bar (Nav buttons + URL input + Go) ───────── */}
+      <div className="flex items-center gap-1.5 mb-2 shrink-0">
+        {/* Back / Forward / Refresh */}
+        <div className="flex items-center gap-0.5 shrink-0 bg-zinc-900 rounded-xl border border-zinc-800 px-1 py-1">
+          <button
+            onClick={handleGoBack}
+            disabled={!isWebviewReady.current}
+            title="Back"
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800
+                       disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-150"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={handleGoForward}
+            disabled={!isWebviewReady.current}
+            title="Forward"
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800
+                       disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-150"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={!isWebviewReady.current}
+            title="Refresh"
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800
+                       disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-150"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+
+        {/* URL Input */}
         <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-xl border border-zinc-800 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500/50 transition-all duration-200">
           <svg
             className="w-4 h-4 shrink-0 text-zinc-600"
@@ -830,7 +893,7 @@ export default function BrowserPlayer({ roomId }) {
       <div
         id="webview-placeholder"
         ref={placeholderRef}
-        className="w-full aspect-video rounded-xl overflow-hidden bg-zinc-900 shadow-lg shadow-black/30 mb-3 relative"
+        className="w-full flex-1 min-h-0 rounded-xl overflow-hidden bg-zinc-900 shadow-lg shadow-black/30 mb-3 relative"
       >
         {isVideoMode && selectedVideoUrl ? (
           <video
