@@ -206,6 +206,13 @@ export default function BrowserPlayer({ roomId }) {
       // Примечание: getBoundingClientRect() возвращает логические (CSS) пиксели.
       // Tauri LogicalPosition/LogicalSize также работают в логических пикселях.
       // НЕ умножаем на devicePixelRatio — Tauri сам конвертирует.
+      console.log("[BrowserPlayer] 🚀 Invoking create_browser_webview:", {
+        url: targetUrl,
+        x: rect.left,
+        y: rect.top,
+        w: rect.width,
+        h: rect.height,
+      });
       await invoke("create_browser_webview", {
         url: targetUrl,
         label: WEBVIEW_LABEL,
@@ -214,11 +221,14 @@ export default function BrowserPlayer({ roomId }) {
         w: rect.width,
         h: rect.height,
       });
+      console.log("[BrowserPlayer] ✅ create_browser_webview succeeded");
 
       isWebviewReady.current = true;
       setPlayerInfo("Page loaded — looking for video...");
     } catch (err) {
-      console.error("[BrowserPlayer] Failed to create webview:", err);
+      console.error("[BrowserPlayer] [Rust Error] create_browser_webview FAILED:", err);
+      console.error("[BrowserPlayer] [Rust Error] Target URL:", targetUrl);
+      console.error("[BrowserPlayer] [Rust Error] Coords:", { x: rect.left, y: rect.top, w: rect.width, h: rect.height });
       setPlayerInfo(`Error: ${err}`);
       isWebviewReady.current = false;
       // При ошибке сразу убираем overlay

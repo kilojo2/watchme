@@ -29,32 +29,66 @@ async fn create_browser_webview(
     w: f64,
     h: f64,
 ) -> Result<(), String> {
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 1: Валидация URL — автоматически добавляем https://
+    // ═══════════════════════════════════════════════════════════════
+    let url = if !url.starts_with("http://") && !url.starts_with("https://") {
+        let with_https = format!("https://{}", url);
+        println!("[Rust] ⚠️ URL missing scheme, prepending https://: {} -> {}", url, with_https);
+        with_https
+    } else {
+        url
+    };
+
     println!(
-        "[Rust] create_browser_webview: url={}, label={}, pos=({},{}), size=({},{})",
+        "[Rust] 🚀 create_browser_webview: url={}, label={}, pos=({:.1},{:.1}), size=({:.1}x{:.1})",
         url, label, x, y, w, h
     );
 
-    // Preload-скрипт
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 2: Загружаем preload-скрипт
+    // ═══════════════════════════════════════════════════════════════
     let preload = include_str!("../preload/browser-preload.js");
-    println!("[Rust] Preload script length: {} bytes", preload.len());
+    println!("[Rust] ✅ Preload script loaded: {} bytes", preload.len());
 
-    // Получаем главное окно
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 3: Получаем главное окно и проверяем его размеры
+    // ═══════════════════════════════════════════════════════════════
     let window = app
         .get_window("main")
-        .ok_or_else(|| "Main window not found".to_string())?;
+        .ok_or_else(|| {
+            let msg = "Main window not found".to_string();
+            println!("[Rust] ❌ Fatal: {}", msg);
+            msg
+        })?;
 
-    let parsed_url =
-        url::Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
+    // Диагностика: проверяем размеры главного окна
+    if let Ok(outer_size) = window.outer_size() {
+        println!("[Rust] 📐 Main window outer size: {}x{}", outer_size.width, outer_size.height);
+    }
+    if let Ok(inner_size) = window.inner_size() {
+        println!("[Rust] 📐 Main window inner size: {}x{}", inner_size.width, inner_size.height);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 4: Парсим URL
+    // ═══════════════════════════════════════════════════════════════
+    let parsed_url = url::Url::parse(&url)
+        .map_err(|e| {
+            let msg = format!("Invalid URL '{}': {}", url, e);
+            println!("[Rust] ❌ URL parse error: {}", msg);
+            msg
+        })?;
+    println!("[Rust] ✅ URL parsed: scheme={}, host={:?}", parsed_url.scheme(), parsed_url.host());
 
     // Флаг остановки поллинга (устанавливается при уничтожении webview)
     let stop_polling = Arc::new(AtomicBool::new(false));
     let stop_polling_clone = stop_polling.clone();
 
-    println!(
-        "[Rust] Building webview '{}'", label
-    );
-
-    // ── Строим WebviewBuilder ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 5: Строим WebviewBuilder
+    // ═══════════════════════════════════════════════════════════════
+    println!("[Rust] 🔧 Building WebviewBuilder for '{}'...", label);
     let mut builder = WebviewBuilder::new(&label, tauri::WebviewUrl::External(parsed_url))
         .initialization_script(preload)
         .focused(true)
@@ -103,18 +137,48 @@ async fn create_browser_webview(
         println!("[Rust] 🔥 Page load event FIRED: {}", payload.url());
     });
 
-    // Позиционируем
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 6: Вычисляем позицию и размер (логические пиксели)
+    // ═══════════════════════════════════════════════════════════════
+    println!("[Rust] 📍 Position=({:.1},{:.1}) Size=({:.1}x{:.1})", x, y, w, h);
     let position = tauri::LogicalPosition::new(x, y);
     let size = tauri::LogicalSize::new(w, h);
 
-    println!("[Rust] Calling window.add_child()...");
-    let child = window
-        .add_child(builder, position, size)
-        .map_err(|e| format!("Failed to create child webview: {}", e))?;
-    println!("[Rust] Child webview created successfully!");
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 7: Создаём дочерний webview через add_child()
+    // ═══════════════════════════════════════════════════════════════
+    println!("[Rust] 🏗️ Calling window.add_child()...");
+    let child = match window.add_child(builder, position, size) {
+        Ok(wv) => {
+            println!("[Rust] ✅ Child webview '{}' created successfully!", label);
+            wv
+        }
+        Err(e) => {
+            let msg = format!("Failed to create child webview: {}", e);
+            println!("[Rust] ❌ add_child FAILED: {}", msg);
+            return Err(msg);
+        }
+    };
 
+    // ═══════════════════════════════════════════════════════════════
+    // ШАГ 8: Пост-создание — авто-resize + диагностика
+    // ═══════════════════════════════════════════════════════════════
     // Явно включаем авто-resize, чтобы webview следовал за окном
-    let _ = child.set_auto_resize(true);
+    match child.set_auto_resize(true) {
+        Ok(_) => println!("[Rust] ✅ set_auto_resize(true) OK"),
+        Err(e) => println!("[Rust] ⚠️ set_auto_resize warning: {:?}", e),
+    }
+
+    // Диагностика: проверяем позицию и размер созданного webview
+    if let Ok(pos) = child.position() {
+        println!("[Rust] 📍 Child webview position after creation: ({:?})", pos);
+    }
+    if let Ok(s) = child.size() {
+        println!("[Rust] 📐 Child webview size after creation: ({:?})", s);
+    }
+    if let Ok(url) = child.url() {
+        println!("[Rust] 🔗 Child webview URL: {}", url);
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // Поллинг + сниффер — запускаем ВНЕ on_page_load, чтобы
@@ -453,13 +517,18 @@ async fn close_browser_webview(app: tauri::AppHandle, label: String) -> Result<(
         .get_window("main")
         .ok_or_else(|| "Main window not found".to_string())?;
 
-    let webview = window
-        .get_webview(&label)
-        .ok_or_else(|| format!("Webview '{}' not found", &label))?;
-
-    webview.close().map_err(|e| format!("Failed to close webview: {}", e))?;
-
-    Ok(())
+    match window.get_webview(&label) {
+        Some(webview) => {
+            println!("[Rust] 🗑️ Closing webview '{}'...", label);
+            webview.close().map_err(|e| format!("Failed to close webview: {}", e))?;
+            println!("[Rust] ✅ Webview '{}' closed", label);
+            Ok(())
+        }
+        None => {
+            println!("[Rust] ⏭️ close_browser_webview: webview '{}' not found (already closed or never created)", label);
+            Ok(())
+        }
+    }
 }
 
 /// Изменяет позицию и/или размер дочернего Webview.
