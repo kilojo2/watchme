@@ -79,7 +79,7 @@ export default function Chat() {
       {/* ── Messages ───────────────────────────── */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scroll-smooth"
+        className="flex-1 overflow-y-auto min-h-0 px-4 py-3 space-y-3 scroll-smooth"
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-600 text-sm gap-1">
