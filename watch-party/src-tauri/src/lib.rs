@@ -161,7 +161,7 @@ async fn create_browser_webview(
     };
 
     // ═══════════════════════════════════════════════════════════════
-    // ШАГ 8: Пост-создание — авто-resize + диагностика
+    // ШАГ 8: Пост-создание — диагностика + show()
     // ═══════════════════════════════════════════════════════════════
     // Явно включаем авто-resize, чтобы webview следовал за окном
     match child.set_auto_resize(true) {
@@ -169,15 +169,34 @@ async fn create_browser_webview(
         Err(e) => println!("[Rust] ⚠️ set_auto_resize warning: {:?}", e),
     }
 
-    // Диагностика: проверяем позицию и размер созданного webview
-    if let Ok(pos) = child.position() {
-        println!("[Rust] 📍 Child webview position after creation: ({:?})", pos);
+    // Явно показываем webview (на случай если visible не установлен)
+    match child.show() {
+        Ok(_) => println!("[Rust] ✅ child.show() OK"),
+        Err(e) => println!("[Rust] ⚠️ child.show() error: {:?}", e),
     }
-    if let Ok(s) = child.size() {
-        println!("[Rust] 📐 Child webview size after creation: ({:?})", s);
+
+    // Диагностика: bounds() — единый запрос позиции + размера
+    match child.bounds() {
+        Ok(b) => println!("[Rust] 📐 Child bounds: pos=({:?}), size=({:?})", b.position, b.size),
+        Err(e) => println!("[Rust] ⚠️ child.bounds() error: {:?}", e),
     }
-    if let Ok(url) = child.url() {
-        println!("[Rust] 🔗 Child webview URL: {}", url);
+
+    // Диагностика: position() отдельно
+    match child.position() {
+        Ok(pos) => println!("[Rust] 📍 Child position: ({:?})", pos),
+        Err(e) => println!("[Rust] ⚠️ child.position() error: {:?}", e),
+    }
+
+    // Диагностика: size() отдельно
+    match child.size() {
+        Ok(s) => println!("[Rust] 📐 Child size: ({:?})", s),
+        Err(e) => println!("[Rust] ⚠️ child.size() error: {:?}", e),
+    }
+
+    // Диагностика: URL
+    match child.url() {
+        Ok(url) => println!("[Rust] 🔗 Child webview URL: {}", url),
+        Err(e) => println!("[Rust] ⚠️ child.url() error: {:?}", e),
     }
 
     // ═══════════════════════════════════════════════════════════════
