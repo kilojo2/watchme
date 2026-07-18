@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ref, update, serverTimestamp, onValue } from "firebase/database";
 import { RoomProvider, useRoomContext } from "../context/RoomContext";
 import { database } from "../lib/firebase";
+import { isTauri } from "../lib/runtime";
 import VideoPlayer from "../components/VideoPlayer";
 import BrowserPlayer from "../components/BrowserPlayer";
 import Chat from "../components/Chat";
@@ -67,6 +68,7 @@ function RoomContent() {
   const [nameInput, setNameInput] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [showTauriModal, setShowTauriModal] = useState(false);
 
   // ─── Player Type (из Firebase) ──────────────────────────────
   const [playerType, setPlayerType] = useState("youtube");
@@ -253,6 +255,70 @@ function RoomContent() {
       {/* Admin Panel modal */}
       <AdminPanel isOpen={adminOpen} onClose={() => setAdminOpen(false)} />
 
+      {/* Tauri-only feature modal (web version) */}
+      {showTauriModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowTauriModal(false)}
+        >
+          <div
+            className="relative w-full max-w-md mx-4 p-6 rounded-2xl border border-zinc-700/60
+                       bg-zinc-900/90 backdrop-blur-xl
+                       shadow-2xl shadow-black/40
+                       animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowTauriModal(false)}
+              className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center
+                         text-zinc-500 hover:text-zinc-300 rounded-lg
+                         hover:bg-zinc-800 transition-all duration-200"
+            >
+              ✕
+            </button>
+
+            {/* Icon */}
+            <div className="w-12 h-12 rounded-xl bg-indigo-600/20 flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+
+            <h3 className="text-lg font-semibold text-zinc-100 mb-2">
+              Desktop Feature
+            </h3>
+            <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+              Want to watch movies from pirate sites or any other website? Download our Desktop App to bypass browser limitations.
+            </p>
+
+            <a
+              href="https://github.com/kilojo2/watchme/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl
+                         bg-gradient-to-r from-indigo-600 to-indigo-500
+                         text-white text-sm font-semibold
+                         shadow-lg shadow-indigo-600/20
+                         hover:shadow-xl hover:shadow-indigo-600/30
+                         hover:from-indigo-500 hover:to-indigo-400
+                         active:scale-[0.98]
+                         transition-all duration-200"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+              </svg>
+              Download Desktop App
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* ════════════════ MAIN LAYOUT ════════════════ */}
       <div className="flex flex-1 overflow-hidden">
         {/* ──────── LEFT COLUMN (75%) ──────── */}
@@ -273,11 +339,19 @@ function RoomContent() {
               YouTube
             </button>
             <button
-              onClick={() => switchPlayerType("browser")}
+              onClick={() => {
+                if (isTauri()) {
+                  switchPlayerType("browser");
+                } else {
+                  setShowTauriModal(true);
+                }
+              }}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                 playerType === "browser"
                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+                  : isTauri()
+                    ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+                    : "text-zinc-600 cursor-not-allowed"
               }`}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
