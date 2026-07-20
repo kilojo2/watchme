@@ -23,7 +23,12 @@ const electronPlugins = isRailway ? [] : [
           // Electron 31 (Node 20) handles ESM natively.
           target: 'node20',
           rollupOptions: {
-            external: ['electron'],
+            external: [
+              'electron',
+              '@ghostery/adblocker-electron',
+              '@ghostery/adblocker-electron-preload',
+              'cross-fetch',
+            ],
             output: {
               format: 'es',
               entryFileNames: '[name].mjs',

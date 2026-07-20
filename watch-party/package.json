@@ -17,6 +17,8 @@
     "electron:dev": "vite"
   },
   "dependencies": {
+    "@ghostery/adblocker-electron": "^2.18.1",
+    "cross-fetch": "^4.1.0",
     "firebase": "^12.16.0",
     "hls.js": "^1.6.16",
     "react": "^19.2.7",
@@ -25,12 +27,10 @@
     "react-youtube": "^10.1.0"
   },
   "devDependencies": {
-    "@ghostery/adblocker-electron": "^2.18.1",
     "@tailwindcss/vite": "^4.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
-    "cross-fetch": "^4.1.0",
     "electron": "^31.6.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1",
@@ -48,7 +48,10 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "node_modules/@ghostery/**/*",
+      "node_modules/cross-fetch/**/*",
+      "node_modules/tldts-experimental/**/*"
     ],
     "win": {
       "target": [

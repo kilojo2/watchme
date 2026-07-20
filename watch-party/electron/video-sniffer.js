@@ -92,6 +92,50 @@
     });
   }
 
+  // ── Global Keyboard Hotkeys ───────────────────────────────────────
+  // These work even when the <webview> has focus, because they are
+  // registered at the document level inside the webview itself.
+  document.addEventListener('keydown', function (e) {
+    var video = window.__WATCHME_PLAYER;
+    if (!video) return;
+
+    // Ignore if user is typing in an input / textarea / contenteditable
+    var tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement && document.activeElement.isContentEditable) {
+      return;
+    }
+
+    switch (e.key) {
+      case ' ': // Space → play / pause
+        e.preventDefault();
+        if (video.paused) { video.play(); } else { video.pause(); }
+        break;
+
+      case 'ArrowLeft': // ← → seek -5 s
+        e.preventDefault();
+        video.currentTime = Math.max(0, video.currentTime - 5);
+        // Fire the seeked event manually so the sniffer sends it
+        // (setting currentTime triggers 'seeked' natively)
+        break;
+
+      case 'ArrowRight': // → → seek +5 s
+        e.preventDefault();
+        video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);
+        break;
+
+      case 'f':
+      case 'F': // F → fullscreen toggle
+        e.preventDefault();
+        try {
+          console.log(JSON.stringify({
+            source: 'watchme-sniffer',
+            event: 'fullscreen',
+          }));
+        } catch (_) {}
+        break;
+    }
+  });
+
   // ── Initial scan ─────────────────────────────────────────────────
   scanAllFrames().forEach(attachListeners);
 

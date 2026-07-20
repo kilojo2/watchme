@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, ipcMain } = require('electron');
 const path = require('path');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
@@ -89,14 +89,34 @@ function createWindow() {
     win.webContents.openDevTools({ mode: 'detach' });
   }
 
-  // F12 / Ctrl+Shift+I toggles DevTools in production
+  // ── Keyboard shortcuts ──────────────────────────────────────────
+  // NOTE: These only fire when the React UI (not the <webview>) has
+  // focus.  When the <webview> is focused, hotkeys are handled
+  // directly inside video-sniffer.js via document-level listeners.
   win.webContents.on('before-input-event', (_event, input) => {
+    // DevTools (F12 / Ctrl+Shift+I)
     if (
       input.key === 'F12' ||
       (input.control && input.shift && input.key.toLowerCase() === 'i')
     ) {
       win.webContents.toggleDevTools();
+      return;
     }
+
+    // F → fullscreen toggle (when React UI has focus)
+    if (input.key.toLowerCase() === 'f' && input.type === 'keyDown') {
+      const isFullscreen = win.isFullScreen();
+      win.setFullScreen(!isFullscreen);
+    }
+  });
+
+  // ── IPC: Fullscreen toggle from renderer ───────────────────────
+  // Called when the <webview>'s video-sniffer detects F key and
+  // sends a 'fullscreen' console.log message, which BrowserPlayer
+  // catches and forwards here.
+  ipcMain.on('toggle-fullscreen', () => {
+    const isFullscreen = win.isFullScreen();
+    win.setFullScreen(!isFullscreen);
   });
 
   // Block ALL pop-ups from <webview> or window.open
@@ -107,6 +127,14 @@ function createWindow() {
     return { action: 'deny' };
   });
 }
+
+// ── GPU Acceleration ───────────────────────────────────────────────
+// These flags must be set BEFORE app.whenReady() — Chromium ignores
+// them after the app has started.
+app.commandLine.appendSwitch('--enable-gpu-rasterization');
+app.commandLine.appendSwitch('--ignore-gpu-blocklist');
+app.commandLine.appendSwitch('--enable-features', 'VaapiVideoDecoder,PlatformHEVCDecoderSupport');
+app.commandLine.appendSwitch('--use-angle', 'd3d11');
 
 // ── Determine if we're running in development mode ─────────────────
 const isDev = !app.isPackaged;
