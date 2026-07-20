@@ -28,6 +28,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Tauri / Rust
-src-tauri/target/
-src-tauri/gen/
+# Electron build output
+dist-electron/
+release/

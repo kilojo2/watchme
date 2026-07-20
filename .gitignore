@@ -26,9 +26,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Tauri / Rust
-watch-party/src-tauri/target/
-watch-party/src-tauri/gen/
+# Electron build output
+watch-party/dist-electron/
 
 # Environment
 .env

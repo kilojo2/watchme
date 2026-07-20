@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ref, update, serverTimestamp, onValue } from "firebase/database";
 import { RoomProvider, useRoomContext } from "../context/RoomContext";
 import { database } from "../lib/firebase";
-import { isTauri } from "../lib/runtime";
+import { isDesktop } from "../lib/runtime";
 import VideoPlayer from "../components/VideoPlayer";
 import BrowserPlayer from "../components/BrowserPlayer";
 import Chat from "../components/Chat";
@@ -340,7 +340,7 @@ function RoomContent() {
             </button>
             <button
               onClick={() => {
-                if (isTauri()) {
+                if (isDesktop()) {
                   switchPlayerType("browser");
                 } else {
                   setShowTauriModal(true);
@@ -349,7 +349,7 @@ function RoomContent() {
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                 playerType === "browser"
                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-                  : isTauri()
+                  : isDesktop()
                     ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
                     : "text-zinc-600 cursor-not-allowed"
               }`}

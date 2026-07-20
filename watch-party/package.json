@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "dist-electron/main.mjs",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -10,29 +11,58 @@
     "dev": "vite",
     "build": "vite build",
     "build:railway": "vite build --mode production",
+    "build:win": "vite build && electron-builder build --win",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build"
+    "electron:dev": "vite"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.2",
-    "@tauri-apps/api": "^2.11.1",
     "firebase": "^12.16.0",
     "hls.js": "^1.6.16",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
-    "react-youtube": "^10.1.0",
-    "tailwindcss": "^4.3.2"
+    "react-youtube": "^10.1.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4",
+    "@ghostery/adblocker-electron": "^2.18.1",
+    "@tailwindcss/vite": "^4.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "cross-fetch": "^4.1.0",
+    "electron": "^31.6.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
     "oxlint": "^1.71.0",
-    "vite": "^8.1.1"
+    "tailwindcss": "^4.3.2",
+    "vite": "^8.1.1",
+    "vite-plugin-electron": "^1.1.0",
+    "vite-plugin-electron-renderer": "^1.0.0"
+  },
+  "build": {
+    "appId": "com.watchparty.electron",
+    "productName": "WatchParty",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "WatchParty-${version}-portable.exe"
+    },
+    "extraMetadata": {
+      "main": "dist-electron/main.mjs"
+    }
   }
 }

@@ -1,129 +1,68 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import Hls from "hls.js";
 import useBrowserSync from "../hooks/useBrowserSync";
 
 /**
- * Константа — уникальный label дочернего Webview.
+ * Загружаем preload-скрипт как строку (raw import Vite).
+ * Injecting via executeJavaScript() on dom-ready avoids preload path issues.
  */
-const WEBVIEW_LABEL = "browser-player";
+// @ts-ignore — Vite raw import
+import BROWSER_PRELOAD from "../../electron/browser-preload.js?raw";
+// @ts-ignore — Vite raw import
+import VIDEO_SNIFFER from "../../electron/video-sniffer.js?raw";
 
 /**
- * Runtime detection — проверяем, запущено ли приложение в Tauri.
- *
- * В Tauri v2 `window.__TAURI_INTERNALS__` инжектируется в главное окно
- * через initialization-скрипт. В обычном браузере (Railway) этого нет.
- *
- * @returns {boolean} `true` если внутри Tauri webview
- */
-function isTauriRuntime() {
-  return typeof window !== "undefined" && window.__TAURI_INTERNALS__ != null;
-}
-
-/**
- * BrowserPlayer — компонент встроенного браузера (child webview).
+ * BrowserPlayer — компонент встроенного браузера (Electron <webview>).
  *
  * ## Архитектура
  *
  * ┌──────────────────────────────────────────────────────────────┐
- * │                   BrowserPlayer (главное окно)                │
+ * │                   BrowserPlayer (Electron)                    │
  * │  ┌─── Address Bar ───────────────────────────────────────┐   │
  * │  │ https://example.com/movie              [Go] [🔄]      │   │
  * │  └───────────────────────────────────────────────────────┘   │
  * │  ┌─── Toolbar ───────────────────────────────────────────┐   │
  * │  │ [🔍 Sync Player]  [📋 Show Frames]                    │   │
  * │  └───────────────────────────────────────────────────────┘   │
- * │  ┌─── #webview-placeholder ──────────────────────────────┐   │
- * │  │   ╔══ Дочерний Webview (child webview) ═══════╗       │   │
- * │  │   ║  Загружает внешний сайт; preload-скрипт   ║       │   │
- * │  │   ║  сканирует top-level + все iframe на      ║       │   │
- * │  │   ║  наличие <video> (даже кросс-доменные)    ║       │   │
- * │  │   ╚═══════════════════════════════════════════╝       │   │
+ * │  ┌─── <webview> (Electron In-App Browser) ───────────────┐   │
+ * │  │  Загружает внешний сайт; preload-скрипт              │   │
+ * │  │  сканирует top-level + все iframe на                  │   │
+ * │  │  наличие <video> (даже кросс-доменные)               │   │
  * │  └───────────────────────────────────────────────────────┘   │
  * │                                                              │
  * │  [📺 Video detected] — [3 frames found] — status line       │
  * └──────────────────────────────────────────────────────────────┘
  *
  * ## Cross-frame scanning
+ * С флагом disablewebsecurity на <webview> отключается Same-Origin Policy,
+ * что позволяет из top-frame скрипта получать доступ к contentDocument
+ * любого iframe.
  *
- * Preload-скрипт использует --disable-web-security (установлен в lib.rs)
- * для доступа к содержимому кросс-доменных iframe. MutationObserver
- * устанавливается на каждый iframe, чтобы ловить динамически создаваемые
- * <video>-элементы внутри плееров (Bazon, Collaps и др.).
- *
- * ## Ручной режим синхронизации
- *
- * Кнопка "Sync Player" отправляет IPC-событие scan-video в дочерний
- * webview, что вызывает полное пересканирование всех фреймов.
- * Это нужно, когда пользователь вручную кликнул по плееру,
- * закрыл рекламу и запустил видео.
- *
- * ## Browser-only mode (Railway)
- *
- * When deployed to Railway (plain browser), the Tauri backend is not
- * available. The component detects this via `isTauriRuntime()` and
- * shows a placeholder message instead of the address bar / webview.
- * All `invoke()` calls safely become no-ops via the Tauri API stub.
+ * ## Preload-скрипт
+ * В отличие от Tauri (initialization_script), Electron <webview> injects
+ * preload-скрипт через атрибут preload (file:// URL). Мы используем
+ * executeJavaScript() на dom-ready, что равнозначно.
  *
  * @param {{ roomId: string }} props
  */
 export default function BrowserPlayer({ roomId }) {
-  // ── Runtime detection ──────────────────────────────────────
-  const isTauri = isTauriRuntime();
-
-  // Если не в Tauri — показываем сообщение и ничего не рендерим
-  if (!isTauri) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 py-16 text-zinc-500">
-        <svg className="w-16 h-16 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1}
-            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-          />
-        </svg>
-        <div className="text-center max-w-md">
-          <p className="text-base font-medium text-zinc-400 mb-1">
-            In-App Browser
-          </p>
-          <p className="text-sm text-zinc-600 leading-relaxed">
-            This feature requires the <strong className="text-zinc-500">Tauri desktop app</strong>.
-            It is not available in the browser version.
-          </p>
-          <p className="text-xs text-zinc-700 mt-3">
-            Download the desktop app or use the YouTube player instead.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // ── Refs ────────────────────────────────────────────────────
-  // ── Refs ────────────────────────────────────────────────────
-  const placeholderRef = useRef(null);
-  const containerRef = useRef(null);
+  const webviewRef = useRef(null);
   const currentUrlRef = useRef("");
   const roomStateRef = useRef(null);
-  const isWebviewReady = useRef(false);
-  const isCreatingRef = useRef(false); // guard от повторного создания
+  const pollTimerRef = useRef(null);
 
   // ── State ───────────────────────────────────────────────────
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [videoFound, setVideoFound] = useState(false);
   const [playerInfo, setPlayerInfo] = useState("");
-  const [frames, setFrames] = useState([]); // информация об iframe
-  const [showFrames, setShowFrames] = useState(false); // показать список iframe
-  const [logs, setLogs] = useState([]); // последние логи из preload
-
-  // ── Loading overlay — скрывает placeholder пока webview грузится,
-  //    автоматически убирается через 3 секунды (fallback).
+  const [frames, setFrames] = useState([]);
+  const [showFrames, setShowFrames] = useState(false);
+  const [logs, setLogs] = useState([]);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
-  const loadingOverlayTimerRef = useRef(null);
 
-  // ── Sniffed video URLs (from Rust network sniffer) ──────────
+  // ── Sniffed video URLs ──────────────────────────────────────
   const [sniffedUrls, setSniffedUrls] = useState([]);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState("");
   const [isVideoMode, setIsVideoMode] = useState(false);
@@ -132,141 +71,25 @@ export default function BrowserPlayer({ roomId }) {
   const { roomState, updatePlayerState, setRoomVideo, lastSentTimestamp } =
     useBrowserSync(roomId);
 
-  // Храним актуальный roomState в ref (для setTimeout и IPC-листенеров)
   roomStateRef.current = roomState;
+
+  // Ref for updatePlayerState to avoid stale closures in event handlers
+  const updatePlayerStateRef = useRef(updatePlayerState);
+  updatePlayerStateRef.current = updatePlayerState;
 
   // ── Video element refs (for HLS.js playback) ────────────────
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
 
-  // Скрывает loading overlay и очищает таймер.
-  // Вызывается при первом полезном IPC-событии от webview.
-  const dismissLoadingOverlay = useCallback(() => {
-    setShowLoadingOverlay(false);
-    if (loadingOverlayTimerRef.current) {
-      clearTimeout(loadingOverlayTimerRef.current);
-      loadingOverlayTimerRef.current = null;
-    }
+  // ================================================================
+  // 1. Управление <webview> (навигация)
+  // ================================================================
+  const navigateTo = useCallback((targetUrl) => {
+    currentUrlRef.current = targetUrl;
+    setUrl(targetUrl);
+    // <webview> автоматически загрузится при изменении src
   }, []);
 
-  // ================================================================
-  // 1. Создание / обновление дочернего webview
-  // ================================================================
-  const createWebview = useCallback(async (targetUrl) => {
-    // Guard: предотвращаем повторное создание, пока предыдущее в процессе
-    if (isCreatingRef.current) {
-      console.log("[BrowserPlayer] ⏭ Skipping createWebview — already creating");
-      return;
-    }
-
-    const placeholder = placeholderRef.current;
-    if (!placeholder) return;
-
-    const rect = placeholder.getBoundingClientRect();
-
-    // Guard: проверяем, что placeholder имеет реальные размеры
-    if (rect.width < 1 || rect.height < 1) {
-      console.warn("[BrowserPlayer] ⚠️ Placeholder has zero dimensions, retrying in 100ms", rect);
-      setTimeout(() => createWebview(targetUrl), 100);
-      return;
-    }
-
-    console.log("[BrowserPlayer] 📐 Placeholder rect:", rect);
-
-    setIsLoading(true);
-    setVideoFound(false);
-    setPlayerInfo("Loading...");
-    setFrames([]);
-    setLogs([]);
-    isCreatingRef.current = true;
-
-    // Показываем loading overlay над placeholder
-    setShowLoadingOverlay(true);
-
-    // Fallback: принудительно убираем overlay через 3 секунды,
-    // даже если on_page_load / polling не сработали.
-    if (loadingOverlayTimerRef.current) {
-      clearTimeout(loadingOverlayTimerRef.current);
-    }
-    loadingOverlayTimerRef.current = setTimeout(() => {
-      setShowLoadingOverlay(false);
-    }, 3000);
-
-    try {
-      // Закрываем существующий webview (если есть)
-      try {
-        await invoke("close_browser_webview", {
-          label: WEBVIEW_LABEL,
-        });
-      } catch {
-        // Если webview нет — игнорируем
-      }
-
-      // Создаём новый
-      // Примечание: getBoundingClientRect() возвращает логические (CSS) пиксели.
-      // Tauri LogicalPosition/LogicalSize также работают в логических пикселях.
-      // НЕ умножаем на devicePixelRatio — Tauri сам конвертирует.
-      console.log("[BrowserPlayer] 🚀 Invoking create_browser_webview:", {
-        url: targetUrl,
-        x: rect.left,
-        y: rect.top,
-        w: rect.width,
-        h: rect.height,
-      });
-      await invoke("create_browser_webview", {
-        url: targetUrl,
-        label: WEBVIEW_LABEL,
-        x: rect.left,
-        y: rect.top,
-        w: rect.width,
-        h: rect.height,
-      });
-      console.log("[BrowserPlayer] ✅ create_browser_webview succeeded");
-
-      isWebviewReady.current = true;
-      setPlayerInfo("Page loaded — looking for video...");
-    } catch (err) {
-      console.error("[BrowserPlayer] [Rust Error] create_browser_webview FAILED:", err);
-      console.error("[BrowserPlayer] [Rust Error] Target URL:", targetUrl);
-      console.error("[BrowserPlayer] [Rust Error] Coords:", { x: rect.left, y: rect.top, w: rect.width, h: rect.height });
-      setPlayerInfo(`Error: ${err}`);
-      isWebviewReady.current = false;
-      // При ошибке сразу убираем overlay
-      setShowLoadingOverlay(false);
-      if (loadingOverlayTimerRef.current) {
-        clearTimeout(loadingOverlayTimerRef.current);
-      }
-    } finally {
-      setIsLoading(false);
-      isCreatingRef.current = false;
-    }
-  }, []);
-
-  // ================================================================
-  // 2. Изменение позиции/размера webview при resize
-  // ================================================================
-  const repositionWebview = useCallback(() => {
-    if (!isWebviewReady.current) return;
-
-    const placeholder = placeholderRef.current;
-    if (!placeholder) return;
-
-    const rect = placeholder.getBoundingClientRect();
-
-    invoke("resize_browser_webview", {
-      label: WEBVIEW_LABEL,
-      x: rect.left,
-      y: rect.top,
-      w: rect.width,
-      h: rect.height,
-    }).catch(() => {
-      // webview может быть закрыт к моменту выполнения
-    });
-  }, []);
-
-  // ================================================================
-  // 3. Навигация (Go button / Enter)
-  // ================================================================
   const handleGo = useCallback(() => {
     let targetUrl = url.trim();
     if (!targetUrl) return;
@@ -278,8 +101,7 @@ export default function BrowserPlayer({ roomId }) {
 
     currentUrlRef.current = targetUrl;
     setRoomVideo(targetUrl);
-    createWebview(targetUrl);
-  }, [url, createWebview, setRoomVideo]);
+  }, [url, setRoomVideo]);
 
   const handleKeyDown = useCallback(
     (e) => {
@@ -289,257 +111,252 @@ export default function BrowserPlayer({ roomId }) {
   );
 
   // ================================================================
-  // 3b. Навигация: Назад / Вперёд / Обновить
+  // 2. Навигация: Назад / Вперёд / Обновить
   // ================================================================
   const handleGoBack = useCallback(() => {
-    invoke("eval_in_browser", {
-      label: WEBVIEW_LABEL,
-      js: "window.history.back()",
-    }).catch(() => {});
+    webviewRef.current?.goBack();
   }, []);
 
   const handleGoForward = useCallback(() => {
-    invoke("eval_in_browser", {
-      label: WEBVIEW_LABEL,
-      js: "window.history.forward()",
-    }).catch(() => {});
+    webviewRef.current?.goForward();
   }, []);
 
   const handleRefresh = useCallback(() => {
-    invoke("eval_in_browser", {
-      label: WEBVIEW_LABEL,
-      js: "window.location.reload()",
-    }).catch(() => {});
+    webviewRef.current?.reload();
   }, []);
 
   // ================================================================
-  // 4. Слушаем Tauri IPC события от дочернего webview
+  // 3. Подписка на события <webview>
   // ================================================================
   useEffect(() => {
-    const unlisteners = [];
+    const wv = webviewRef.current;
+    if (!wv) return;
 
-    async function setupListeners() {
-      console.log("[BrowserPlayer:D] Setting up event listeners...");
+    let loadingTimeout = null;
 
-      // play — первое признак, что webview жив и работает
-      const unsubPlay = await listen(
-        "browser-video-play",
-        (event) => {
-          dismissLoadingOverlay();
-          console.log("[BrowserPlayer:D] Received browser-video-play:", event.payload);
-          setVideoFound(true);
-          setPlayerInfo("▶ Playing");
-          updatePlayerState("playing", event.payload.currentTime);
-        },
-      );
-      unlisteners.push(unsubPlay);
+    const onStartLoading = () => {
+      setIsLoading(true);
+      setShowLoadingOverlay(true);
+      clearTimeout(loadingTimeout);
+      loadingTimeout = setTimeout(() => {
+        setShowLoadingOverlay(false);
+      }, 3000);
+    };
 
-      // pause
-      const unsubPause = await listen(
-        "browser-video-pause",
-        (event) => {
-          console.log("[BrowserPlayer:D] Received browser-video-pause:", event.payload);
-          setPlayerInfo("⏸ Paused");
-          updatePlayerState("paused", event.payload.currentTime);
-        },
-      );
-      unlisteners.push(unsubPause);
+    const onStopLoading = () => {
+      setIsLoading(false);
+      setShowLoadingOverlay(false);
+      clearTimeout(loadingTimeout);
+    };
 
-      // seek
-      const unsubSeek = await listen(
-        "browser-video-seek",
-        (event) => {
-          console.log("[BrowserPlayer:D] Received browser-video-seek:", event.payload);
-          setPlayerInfo(`⏩ Seeking to ${event.payload.currentTime.toFixed(1)}s`);
-          updatePlayerState(
-            roomStateRef.current.status === "playing" ? "playing" : "paused",
-            event.payload.currentTime,
-          );
-        },
-      );
-      unlisteners.push(unsubSeek);
+    const onDidNavigate = (e) => {
+      currentUrlRef.current = e.url;
+      setUrl(e.url);
+      console.log("[BrowserPlayer] Navigated to:", e.url);
+    };
 
-      // timeupdate (периодическая синхронизация позиции)
-      const unsubTime = await listen(
-        "browser-video-timeupdate",
-        (event) => {
-          console.log("[BrowserPlayer:D] Received browser-video-timeupdate:", event.payload);
-          setVideoFound(true);
-          if (roomStateRef.current.status === "playing") {
-            updatePlayerState("playing", event.payload.currentTime);
-          }
-        },
-      );
-      unlisteners.push(unsubTime);
+    const onPageTitleUpdated = (e) => {
+      console.log("[BrowserPlayer] Title:", e.title);
+    };
 
-      // video-found / video-lost
-      const unsubFound = await listen(
-        "browser-video-found",
-        (event) => {
-          dismissLoadingOverlay();
-          console.log("[BrowserPlayer:D] Received browser-video-found:", event.payload);
-          if (event.payload?.found) {
-            setVideoFound(true);
-            setPlayerInfo("📺 Video detected & synced");
-          } else {
-            setVideoFound(false);
-            setPlayerInfo("Video element lost — click Sync Player");
-          }
-        },
-      );
-      unlisteners.push(unsubFound);
+    const onDomReady = () => {
+      console.log("[BrowserPlayer] <webview> DOM ready — injecting preload + sniffer");
+      // Inject preload script (video/frame scanner) on every dom-ready
+      try {
+        wv.executeJavaScript(BROWSER_PRELOAD).catch((err) => {
+          console.warn("[BrowserPlayer] Preload injection failed:", err);
+        });
+      } catch (e) {
+        console.warn("[BrowserPlayer] Preload injection error:", e);
+      }
+      // Inject video sniffer — attaches play/pause/seeked listeners
+      // and sends real-time events via console.log
+      try {
+        wv.executeJavaScript(VIDEO_SNIFFER).catch((err) => {
+          console.warn("[BrowserPlayer] Sniffer injection failed:", err);
+        });
+      } catch (e) {
+        console.warn("[BrowserPlayer] Sniffer injection error:", e);
+      }
+    };
+    const onConsoleMessage = (e) => {
+      const msg = e.message;
+      const level = e.level;
 
-      // frame-info — структура iframe на странице
-      const unsubFrames = await listen(
-        "browser-frame-info",
-        (event) => {
-          dismissLoadingOverlay();
-          const frameList = event.payload?.frames || [];
-          console.log("[BrowserPlayer:D] Received browser-frame-info:", frameList.length, "frames");
-          setFrames(frameList);
-          if (frameList.length > 0 && !videoFound) {
-            setPlayerInfo(
-              `Page loaded — ${frameList.length} frame(s) found, waiting for video...`,
-            );
-          }
-        },
-      );
-      unlisteners.push(unsubFrames);
+      // ── Parse video-sniffer JSON events ──────────────────
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed.source === "watchme-sniffer") {
+          const status = parsed.event === "play" ? "playing" : "paused";
+          // Use ref to avoid stale closure issues
+          updatePlayerStateRef.current(status, parsed.time);
+          return;
+        }
+      } catch (_) {
+        // not JSON — fall through to normal log handling
+      }
 
-      // log — сообщения от preload-скрипта
-      const unsubLog = await listen(
-        "browser-log",
-        (event) => {
-          const { level, msg, data } = event.payload || {};
-          console.log("[BrowserPlayer:D] Received browser-log:", level, msg, data);
-          const entry = {
-            level,
-            msg,
-            data,
-            time: new Date().toLocaleTimeString(),
-          };
-          setLogs((prev) => [entry, ...prev].slice(0, 50)); // храним последние 50
-        },
-      );
-      unlisteners.push(unsubLog);
+      // ── BrowserPreload logs ───────────────────────────────
+      if (msg.includes("[BrowserPreload]")) {
+        const entry = {
+          level: level === 2 ? "error" : level === 1 ? "warn" : "info",
+          msg: msg,
+          time: new Date().toLocaleTimeString(),
+        };
+        setLogs((prev) => [entry, ...prev].slice(0, 50));
+      }
+    };
 
-      // browser-video-url — sniffed video URLs от Rust network sniffer
-      const unsubVideoUrl = await listen(
-        "browser-video-url",
-        (event) => {
-          dismissLoadingOverlay();
-          const { url } = event.payload || {};
-          if (!url) return;
-          console.log("[BrowserPlayer:D] 🎬 Sniffed video URL:", url);
-          setSniffedUrls((prev) => {
-            if (prev.some((u) => u.url === url)) return prev;
-            return [...prev, { url, time: new Date().toLocaleTimeString() }];
-          });
-          if (!videoFound) {
-            setVideoFound(true);
-            setPlayerInfo(`🎬 Stream detected — click to play`);
-          }
-        },
-      );
-      unlisteners.push(unsubVideoUrl);
 
-      // diagnostic — сообщения от Rust диагностики (timeout on_page_load и т.д.)
-      const unsubDiag = await listen(
-        "browser-diagnostic",
-        (event) => {
-          console.warn("[BrowserPlayer:D] ⚠️ Diagnostic event:", event.payload);
-          setPlayerInfo(`⚠️ ${event.payload?.message || "Diagnostic event"}`);
-          setLogs((prev) => [
-            {
-              level: "warn",
-              msg: `[DIAG] ${event.payload?.message || ""}`,
-              data: event.payload,
-              time: new Date().toLocaleTimeString(),
-            },
-            ...prev,
-          ].slice(0, 50));
-        },
-      );
-      unlisteners.push(unsubDiag);
-
-      console.log("[BrowserPlayer:D] All event listeners registered");
-    }
-
-    setupListeners().catch(e => console.error("[BrowserPlayer:D] Failed to setup listeners:", e));
+    wv.addEventListener("did-start-loading", onStartLoading);
+    wv.addEventListener("did-stop-loading", onStopLoading);
+    wv.addEventListener("did-navigate", onDidNavigate);
+    wv.addEventListener("did-navigate-in-page", onDidNavigate);
+    wv.addEventListener("page-title-updated", onPageTitleUpdated);
+    wv.addEventListener("dom-ready", onDomReady);
+    wv.addEventListener("console-message", onConsoleMessage);
 
     return () => {
-      console.log("[BrowserPlayer:D] Cleaning up event listeners");
-      if (loadingOverlayTimerRef.current) {
-        clearTimeout(loadingOverlayTimerRef.current);
-        loadingOverlayTimerRef.current = null;
-      }
-      unlisteners.forEach((fn) => fn());
+      wv.removeEventListener("did-start-loading", onStartLoading);
+      wv.removeEventListener("did-stop-loading", onStopLoading);
+      wv.removeEventListener("did-navigate", onDidNavigate);
+      wv.removeEventListener("did-navigate-in-page", onDidNavigate);
+      wv.removeEventListener("page-title-updated", onPageTitleUpdated);
+      wv.removeEventListener("dom-ready", onDomReady);
+      wv.removeEventListener("console-message", onConsoleMessage);
+      clearTimeout(loadingTimeout);
     };
-  }, [updatePlayerState]);
+  }, []);
 
   // ================================================================
-  // 6. Реагируем на изменение currentVideoId из Firebase
-  //    (webpage URL → webview; stream URL → video mode)
+  // 4. Поллинг: читаем __browserData из <webview> (URLs + frames only)
+  //    Видео-события теперь приходят через sniffer → console-message.
+  // ================================================================
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      const wv = webviewRef.current;
+      if (!wv) return;
+
+      wv.executeJavaScript(`
+        (function() {
+          var d = window.__browserData;
+          if (!d) return JSON.stringify({ alive: false });
+          return JSON.stringify({
+            alive: true,
+            initDone: d.initDone,
+            video: d.video,
+            frameCount: d.frameCount,
+            title: d.title,
+            corsBlocked: d.corsBlocked,
+            iframeAccess: d.iframeAccess ? d.iframeAccess.slice(0, 10) : [],
+            videoUrls: d.videoUrls ? d.videoUrls.slice(0, 20) : [],
+          });
+        })();
+      `).then((result) => {
+        try {
+          const data = JSON.parse(result);
+          if (!data.alive) return;
+
+          // ── Video detection (indicator only — sync is via sniffer) ──
+          if (data.video && data.video.found) {
+            setVideoFound(true);
+            setPlayerInfo("📺 Video detected & synced");
+          }
+
+          // ── Frame info ──
+          if (data.iframeAccess && data.iframeAccess.length > 0) {
+            setFrames(data.iframeAccess);
+          }
+
+          // ── Sniffed video URLs ──
+          if (data.videoUrls && data.videoUrls.length > 0) {
+            setSniffedUrls((prev) => {
+              const existing = new Set(prev.map((u) => u.url));
+              const newUrls = data.videoUrls.filter((url) => !existing.has(url));
+              if (newUrls.length === 0) return prev;
+              return [
+                ...prev,
+                ...newUrls.map((url) => ({
+                  url,
+                  time: new Date().toLocaleTimeString(),
+                })),
+              ];
+            });
+          }
+
+          // ── CORS diagnostic ──
+          if (data.corsBlocked) {
+            console.warn("[BrowserPlayer] ⚠️ CORS blocking detected in webview!");
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      }).catch(() => {
+        // webview may not be ready yet
+      });
+    }, 1500);
+
+    pollTimerRef.current = pollInterval;
+
+    return () => {
+      clearInterval(pollInterval);
+    };
+  }, []); // Empty deps — sniffer handles real-time sync via console-message
+
+  // ================================================================
+  // 5. Реагируем на изменение currentVideoId из Firebase
   // ================================================================
   useEffect(() => {
     const fbUrl = roomState.currentVideoId;
-    // Guard: не пересоздаём webview, если уже создан для этого URL
     if (!fbUrl) return;
     if (fbUrl === currentUrlRef.current) return;
-    // Guard: если уже создаём — пропускаем (предотвращает каскад при быстрых
-    // обновлениях Firebase snapshot)
-    if (isCreatingRef.current) return;
 
     currentUrlRef.current = fbUrl;
     setUrl(fbUrl);
 
-    // Проверяем, является ли URL прямым видео-потоком (от network sniffer)
+    // Проверяем, является ли URL прямым видео-потоком
     const isStreamUrl = /\.(m3u8|mp4|webm)(\?|#|$)/i.test(fbUrl) ||
                         fbUrl.includes("videoplayback") ||
                         fbUrl.includes("/hls/") ||
                         fbUrl.includes("/manifest/");
 
     if (isStreamUrl) {
-      // Прямой стрим — запускаем видео-режим (hls.js / direct video)
       setSelectedVideoUrl(fbUrl);
       setIsVideoMode(true);
       setPlayerInfo("🎬 Starting stream playback...");
-    } else {
-      // Обычная веб-страница — создаём webview
-      createWebview(fbUrl);
     }
-  }, [roomState.currentVideoId, createWebview]);
+    // Для обычных URL <webview> загрузится автоматически
+    // через изменение src
+  }, [roomState.currentVideoId]);
 
   // ================================================================
-  // 7. Отложенная повторная синхронизация
+  // 6. Отложенная повторная синхронизация
   // ================================================================
   useEffect(() => {
     if (!roomState.currentVideoId) return;
 
     const timer = setTimeout(() => {
       const { status, lastPosition } = roomStateRef.current;
+      const wv = webviewRef.current;
+      if (!wv) return;
 
       if (status === "playing") {
-        invoke("eval_in_browser", {
-          label: WEBVIEW_LABEL,
-          js: "(window.__browserData?.video || document.querySelector('video'))?.play()",
-        }).catch(() => {});
+        wv.executeJavaScript(
+          "window.__WATCHME_PLAYER?.play()"
+        ).catch(() => {});
         if (lastPosition > 0) {
-          invoke("eval_in_browser", {
-            label: WEBVIEW_LABEL,
-            js: "var v=window.__browserData?.video||document.querySelector('video');if(v)v.currentTime=" + lastPosition,
-          }).catch(() => {});
+          wv.executeJavaScript(
+            "if(window.__WATCHME_PLAYER)window.__WATCHME_PLAYER.currentTime=" + lastPosition
+          ).catch(() => {});
         }
       } else if (status === "paused") {
-        invoke("eval_in_browser", {
-          label: WEBVIEW_LABEL,
-          js: "(window.__browserData?.video || document.querySelector('video'))?.pause()",
-        }).catch(() => {});
+        wv.executeJavaScript(
+          "window.__WATCHME_PLAYER?.pause()"
+        ).catch(() => {});
         if (lastPosition > 0) {
-          invoke("eval_in_browser", {
-            label: WEBVIEW_LABEL,
-            js: "var v=window.__browserData?.video||document.querySelector('video');if(v)v.currentTime=" + lastPosition,
-          }).catch(() => {});
+          wv.executeJavaScript(
+            "if(window.__WATCHME_PLAYER)window.__WATCHME_PLAYER.currentTime=" + lastPosition
+          ).catch(() => {});
         }
       }
     }, 2000);
@@ -549,101 +366,53 @@ export default function BrowserPlayer({ roomId }) {
   }, [roomState.currentVideoId]);
 
   // ================================================================
-  // 8. Следим за изменением размеров окна (ResizeObserver)
-  // ================================================================
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    let rafId = null;
-    const observer = new ResizeObserver(() => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        repositionWebview();
-      });
-    });
-
-    observer.observe(container);
-
-    return () => {
-      observer.disconnect();
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, [repositionWebview]);
-
-  // ================================================================
-  // 9. Cleanup при размонтировании
-  // ================================================================
-  useEffect(() => {
-    // Cleanup при размонтировании: закрываем webview, сбрасываем guards
-    return () => {
-      isWebviewReady.current = false;
-      isCreatingRef.current = false;
-      if (loadingOverlayTimerRef.current) {
-        clearTimeout(loadingOverlayTimerRef.current);
-        loadingOverlayTimerRef.current = null;
-      }
-      invoke("close_browser_webview", {
-        label: WEBVIEW_LABEL,
-      }).catch(() => {});
-    };
-  }, []);
-
-  // ================================================================
-  // 10. Sync Player — ручная синхронизация
+  // 7. Sync Player — ручная синхронизация
   // ================================================================
   const handleSyncPlayer = useCallback(() => {
     setPlayerInfo("🔄 Re-scanning for video...");
-    // Trigger re-scan via eval (the polling loop will pick up changes)
-    invoke("eval_in_browser", {
-      label: WEBVIEW_LABEL,
-      js: "window.__browserData = window.__browserData || {}; document.querySelectorAll('video').forEach(function(v){v.dispatchEvent(new Event('play')); v.dispatchEvent(new Event('pause'));}); void 0;",
-    }).catch(() => {});
+    const wv = webviewRef.current;
+    if (!wv) return;
+    wv.executeJavaScript(
+      "if(window.__WATCHME_PLAYER){" +
+      "  window.__WATCHME_PLAYER.dispatchEvent(new Event('play'));" +
+      "  window.__WATCHME_PLAYER.dispatchEvent(new Event('pause'));" +
+      "} void 0;"
+    ).catch(() => {});
   }, []);
 
   // ================================================================
-  // 11. Show/Hide Frames — отображение iframe
+  // 8. Show/Hide Frames
   // ================================================================
   const toggleFrames = useCallback(() => {
-    if (showFrames) {
-      setShowFrames(false);
-    } else {
-      // Показываем последние полученные данные о фреймах (поллинг обновляет их каждые 500мс)
-      setShowFrames(true);
-    }
-  }, [showFrames]);
+    setShowFrames((prev) => !prev);
+  }, []);
 
   // ================================================================
-  // 12. Выбор sniffed video URL для воспроизведения
+  // 9. Выбор sniffed video URL
   // ================================================================
   const handleSelectVideoUrl = useCallback(
     (videoUrl) => {
-      console.log("[BrowserPlayer:D] 🎬 Selected video URL:", videoUrl);
+      console.log("[BrowserPlayer] 🎬 Selected video URL:", videoUrl);
       setSelectedVideoUrl(videoUrl);
       setIsVideoMode(true);
       setPlayerInfo("🎬 Starting stream playback...");
-
-      // Обновляем Firebase, чтобы другие участники могли подключиться
       setRoomVideo(videoUrl);
     },
     [setRoomVideo],
   );
 
   // ================================================================
-  // 13. Возврат к режиму браузера
+  // 10. Возврат к режиму браузера
   // ================================================================
   const handleBackToBrowsing = useCallback(() => {
     setIsVideoMode(false);
     setSelectedVideoUrl("");
     setPlayerInfo("");
 
-    // Очищаем HLS
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-
-    // Очищаем video element
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.removeAttribute("src");
@@ -652,14 +421,13 @@ export default function BrowserPlayer({ roomId }) {
   }, []);
 
   // ================================================================
-  // 14. Инициализация HLS.js / video при выборе URL
+  // 11. Инициализация HLS.js / video при выборе URL
   // ================================================================
   useEffect(() => {
     if (!selectedVideoUrl || !videoRef.current) return;
 
     const video = videoRef.current;
 
-    // Очищаем предыдущий HLS инстанс
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -685,7 +453,6 @@ export default function BrowserPlayer({ roomId }) {
       hlsRef.current = hls;
       setPlayerInfo("🎬 Loading HLS stream...");
     } else if (!isHls) {
-      // .mp4, .webm, direct video
       video.src = selectedVideoUrl;
       video.load();
       video.play().catch((err) => {
@@ -700,7 +467,7 @@ export default function BrowserPlayer({ roomId }) {
   }, [selectedVideoUrl]);
 
   // ================================================================
-  // 15. Синхронизация <video> событий с Firebase
+  // 12. Синхронизация <video> событий с Firebase
   // ================================================================
   useEffect(() => {
     const video = videoRef.current;
@@ -722,7 +489,6 @@ export default function BrowserPlayer({ roomId }) {
 
     const onTimeUpdate = () => {
       if (video.paused) return;
-      // Throttle time updates to every 2 seconds
       if (Date.now() - guardTimer < 2000) return;
       guardTimer = Date.now();
       updatePlayerState("playing", video.currentTime);
@@ -749,48 +515,43 @@ export default function BrowserPlayer({ roomId }) {
   }, [isVideoMode, updatePlayerState]);
 
   // ================================================================
-  // 16. Обработка remote-команд (из Firebase) для video/webview
+  // 13. Обработка remote-команд (из Firebase) для video/webview
   // ================================================================
   useEffect(() => {
     const { status, lastPosition } = roomState;
 
-    // Loop Guard: не реагируем на собственные изменения
     if (Date.now() - lastSentTimestamp.current < 500) return;
 
     if (!isVideoMode) {
-      // Отправляем remote-команды в child webview через eval_in_browser
+      const wv = webviewRef.current;
+      if (!wv) return;
+
       if (status === "playing") {
-        invoke("eval_in_browser", {
-          label: WEBVIEW_LABEL,
-          js: "(window.__browserData?.video || document.querySelector('video'))?.play()",
-        }).catch(() => {});
+        wv.executeJavaScript(
+          "window.__WATCHME_PLAYER?.play()"
+        ).catch(() => {});
         if (lastPosition > 0) {
-          invoke("eval_in_browser", {
-            label: WEBVIEW_LABEL,
-            js: "var v=window.__browserData?.video||document.querySelector('video');if(v)v.currentTime=" + lastPosition,
-          }).catch(() => {});
+          wv.executeJavaScript(
+            "if(window.__WATCHME_PLAYER)window.__WATCHME_PLAYER.currentTime=" + lastPosition
+          ).catch(() => {});
         }
       } else if (status === "paused") {
-        invoke("eval_in_browser", {
-          label: WEBVIEW_LABEL,
-          js: "(window.__browserData?.video || document.querySelector('video'))?.pause()",
-        }).catch(() => {});
+        wv.executeJavaScript(
+          "window.__WATCHME_PLAYER?.pause()"
+        ).catch(() => {});
         if (lastPosition > 0) {
-          invoke("eval_in_browser", {
-            label: WEBVIEW_LABEL,
-            js: "var v=window.__browserData?.video||document.querySelector('video');if(v)v.currentTime=" + lastPosition,
-          }).catch(() => {});
+          wv.executeJavaScript(
+            "if(window.__WATCHME_PLAYER)window.__WATCHME_PLAYER.currentTime=" + lastPosition
+          ).catch(() => {});
         }
       }
       return;
     }
 
-    // Видео-режим: управляем локальным <video> элементом
     const video = videoRef.current;
     if (!video) return;
 
     if (status === "playing") {
-      // Синхронизируем позицию, если сильно расходится (>2s)
       if (lastPosition > 0 && Math.abs(video.currentTime - lastPosition) > 2) {
         video.currentTime = lastPosition;
       }
@@ -811,17 +572,16 @@ export default function BrowserPlayer({ roomId }) {
   // Render
   // ================================================================
   return (
-    <div ref={containerRef} className="flex flex-col min-h-0 flex-1">
+    <div className="flex flex-col min-h-0 flex-1">
       {/* ── Address Bar (Nav buttons + URL input + Go) ───────── */}
       <div className="flex items-center gap-1.5 mb-2 shrink-0">
         {/* Back / Forward / Refresh */}
         <div className="flex items-center gap-0.5 shrink-0 bg-zinc-900 rounded-xl border border-zinc-800 px-1 py-1">
           <button
             onClick={handleGoBack}
-            disabled={!isWebviewReady.current}
             title="Back"
             className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800
-                       disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-150"
+                       transition-all duration-150"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -829,10 +589,9 @@ export default function BrowserPlayer({ roomId }) {
           </button>
           <button
             onClick={handleGoForward}
-            disabled={!isWebviewReady.current}
             title="Forward"
             className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800
-                       disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-150"
+                       transition-all duration-150"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -840,10 +599,9 @@ export default function BrowserPlayer({ roomId }) {
           </button>
           <button
             onClick={handleRefresh}
-            disabled={!isWebviewReady.current}
             title="Refresh"
             className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800
-                       disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-150"
+                       transition-all duration-150"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -910,11 +668,9 @@ export default function BrowserPlayer({ roomId }) {
       <div className="flex gap-2 mb-3">
         <button
           onClick={handleSyncPlayer}
-          disabled={!isWebviewReady.current}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
                      bg-zinc-800/80 text-zinc-300 border border-zinc-700
                      hover:bg-zinc-700 hover:text-white
-                     disabled:opacity-30 disabled:cursor-not-allowed
                      transition-all duration-200"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -969,12 +725,8 @@ export default function BrowserPlayer({ roomId }) {
         )}
       </div>
 
-      {/* ── Webview Placeholder / Video Player ──────────────── */}
-      <div
-        id="webview-placeholder"
-        ref={placeholderRef}
-        className="w-full flex-1 min-h-0 rounded-xl overflow-hidden bg-zinc-900 shadow-lg shadow-black/30 mb-3 relative"
-      >
+      {/* ── Webview / Video Player ──────────────────────────────── */}
+      <div className="w-full flex-1 min-h-0 rounded-xl overflow-hidden bg-zinc-900 shadow-lg shadow-black/30 mb-3 relative">
         {isVideoMode && selectedVideoUrl ? (
           <video
             ref={videoRef}
@@ -983,7 +735,25 @@ export default function BrowserPlayer({ roomId }) {
             className="w-full h-full object-contain"
             playsInline
           />
-        ) : (!currentUrlRef.current || isLoading) ? (
+        ) : currentUrlRef.current ? (
+          <>
+            <webview
+              ref={webviewRef}
+              src={currentUrlRef.current}
+              className="w-full h-full"
+              disablewebsecurity="true"
+              allowpopups="false"
+            />
+            {/* ── Loading overlay ── */}
+            {showLoadingOverlay && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 z-10 backdrop-blur-sm transition-opacity duration-300 pointer-events-none">
+                <div className="w-10 h-10 border-[3px] border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin mb-3" />
+                <span className="text-sm text-zinc-400 font-medium">Loading page...</span>
+                <span className="text-xs text-zinc-600 mt-1">WebView starting up</span>
+              </div>
+            )}
+          </>
+        ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 gap-3">
             <svg
               className="w-12 h-12 opacity-30"
@@ -1000,21 +770,10 @@ export default function BrowserPlayer({ roomId }) {
             </svg>
             <span className="text-sm">Enter a URL to start browsing</span>
           </div>
-        ) : null}
-
-        {/* ── Loading overlay — скрывает placeholder пока webview
-              загружается. Автоматически убирается через 3s (fallback)
-              или при первом IPC-событии от polling/sniffer.         */}
-        {showLoadingOverlay && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 z-10 backdrop-blur-sm transition-opacity duration-300">
-            <div className="w-10 h-10 border-[3px] border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin mb-3" />
-            <span className="text-sm text-zinc-400 font-medium">Loading page...</span>
-            <span className="text-xs text-zinc-600 mt-1">WebView starting up</span>
-          </div>
         )}
       </div>
 
-      {/* ── Sniffed Video Streams (from Rust network sniffer) ── */}
+      {/* ── Sniffed Video Streams ── */}
       {sniffedUrls.length > 0 && (
         <div className="mb-3 p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/30">
           <div className="text-xs text-emerald-400 font-medium mb-2 flex items-center gap-2">
@@ -1072,7 +831,7 @@ export default function BrowserPlayer({ roomId }) {
         </div>
       )}
 
-      {/* ── Player Info / Status ─────────────────────────────── */}
+      {/* ── Player Info / Status ── */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           {playerInfo && (
@@ -1101,7 +860,7 @@ export default function BrowserPlayer({ roomId }) {
         </div>
       </div>
 
-      {/* ── Frame List (collapsible) ─────────────────────────── */}
+      {/* ── Frame List (collapsible) ── */}
       {showFrames && frames.length > 0 && (
         <div className="mb-3 p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 max-h-48 overflow-y-auto">
           <div className="text-xs text-zinc-400 font-medium mb-2">
@@ -1119,23 +878,20 @@ export default function BrowserPlayer({ roomId }) {
                 <div className="text-xs text-zinc-300 truncate" title={frame.src}>
                   {frame.src || "(no src)"}
                 </div>
-                {frame.depth > 0 && (
+                {(frame.hostname) && (
                   <span className="text-[10px] text-zinc-600">
-                    nested (depth {frame.depth})
+                    {frame.hostname}
+                    {frame.hasVideo ? " • 🎬 video" : ""}
+                    {frame.corsError ? " • 🚫 CORS" : ""}
                   </span>
                 )}
               </div>
-              {(frame.width || frame.height) && (
-                <span className="text-[10px] text-zinc-600 shrink-0">
-                  {frame.width || "auto"}×{frame.height || "auto"}
-                </span>
-              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Debug Log (collapsible, last 5 entries) ──────────── */}
+      {/* ── Debug Log (collapsible) ── */}
       {logs.length > 0 && (
         <details className="mb-2">
           <summary className="text-[10px] text-zinc-700 cursor-pointer hover:text-zinc-500 select-none">

@@ -1,36 +1,47 @@
 /**
  * Runtime Detection Utility
  *
- * Reliably determines whether the app is running inside a Tauri desktop
- * wrapper or in a regular browser (including Railway deployment).
+ * Reliably determines whether the app is running inside a desktop wrapper
+ * (Electron) or in a regular browser (including Railway deployment).
  *
  * ## Detection Logic
  *
- * Tauri v2 injects `window.__TAURI_INTERNALS__` into every webview.
- * This object is present in both the main window and child webviews.
- *
- * In a regular browser or on Railway, this object is undefined.
+ * - **Electron**: `navigator.userAgent` contains `"Electron"` and
+ *   `window.process?.versions?.electron` is defined when
+ *   `nodeIntegration: true` and `contextIsolation: false`.
+ * - **Browser**: Neither condition is true (standard browser or Railway).
  *
  * @module runtime
  */
 
 /**
- * Returns `true` if the code is running inside a Tauri desktop app.
+ * Returns `true` if the code is running inside an Electron desktop app.
  *
  * @returns {boolean}
  */
-export function isTauri() {
+export function isElectron() {
   return (
     typeof window !== "undefined" &&
-    window.__TAURI_INTERNALS__ != null
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.includes("Electron")
   );
+}
+
+/**
+ * Returns `true` if the code is running inside any desktop wrapper
+ * (currently only Electron).
+ *
+ * @returns {boolean}
+ */
+export function isDesktop() {
+  return isElectron();
 }
 
 /**
  * Returns a human-readable runtime name for display / debugging.
  *
- * @returns {"tauri" | "browser"}
+ * @returns {"electron" | "browser"}
  */
 export function getRuntime() {
-  return isTauri() ? "tauri" : "browser";
+  return isElectron() ? "electron" : "browser";
 }

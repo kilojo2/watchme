@@ -1,33 +1,24 @@
 @echo off
-title WatchMe (Release Build)
+title WatchMe (Electron Release Build)
 cd /d "%~dp0"
 
+REM ── Unset this env var (quoted form properly removes it) ──
+set "ELECTRON_RUN_AS_NODE="
+
 echo ============================================
-echo   WatchMe — Launch Release Build
+echo   WatchMe — Build and Launch Electron App
 echo ============================================
 echo.
-
-if exist "src-tauri\target\release\watch-me.exe" (
-    echo  Starting release build ...
-    echo.
-    start "" "src-tauri\target\release\watch-me.exe"
-    exit /b
-)
-
-echo  [WARNING] Release binary not found.
-echo  Building release now (this will take a few minutes) ...
+echo  %CD%
+echo  Building React app + Electron package ...
 echo.
 echo ============================================
 echo.
 
-call npx tauri build
+call npm run build:win
 
-if exist "src-tauri\target\release\watch-me.exe" (
-    echo.
-    echo  Build complete. Starting ...
-    start "" "src-tauri\target\release\watch-me.exe"
-) else (
-    echo.
-    echo  [ERROR] Build failed. Check terminal output above.
-    pause
-)
+echo.
+echo  Build complete. Launching installer from dist-electron/
+echo  (You may need to run the generated installer manually.)
+echo.
+pause

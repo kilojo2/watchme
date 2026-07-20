@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ref, set, serverTimestamp } from "firebase/database";
 import { database } from "../lib/firebase";
-import { isTauri } from "../lib/runtime";
+import { isDesktop } from "../lib/runtime";
 import useAuth from "../hooks/useAuth";
 
 // ─── Constants ───────────────────────────────────────────────
@@ -513,7 +513,7 @@ export default function Home() {
           )}
 
           {/* ═══ Download Desktop App ═══ */}
-          {!isTauri() && (
+          {!isDesktop() && (
             <a
               href="https://github.com/kilojo2/watchme/releases"
               target="_blank"

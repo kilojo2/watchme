@@ -1,41 +1,33 @@
 /**
- * browser-preload.js — Preload-скрипт для дочернего Webview (встроенный браузер).
+ * browser-preload.js — Preload-скрипт для <webview> (Electron In-App Browser).
  *
- * Внедряется через Tauri WebviewBuilder::initialization_script().
+ * Внедряется через атрибут preload на теге <webview>.
  *
- * ## Архитектура IPC (без window.__TAURI__)
+ * ## Архитектура IPC
  *
- * В Tauri v2 `__TAURI_INTERNALS__.invoke()` НЕ РАБОТАЕТ из дочерних webview,
- * загружающих внешние URL (https://...). Tauri блокирует IPC для remote-origins
- * по соображениям безопасности.
+ * В отличие от Tauri v2, Electron <webview> поддерживает:
+ * - `preload` — скрипт, выполняющийся в контексте webview до загрузки страницы
+ * - `executeJavaScript()` — из главного окна
+ * - События: `did-navigate`, `did-navigate-in-page`, `page-title-updated` и др.
  *
- * Вместо invoke() используется следующий механизм:
+ * Вместо Rust polling + emit используется следующий механизм:
  *
  *   1. Preload сохраняет всё состояние в глобальной переменной `window.__browserData`
- *   2. Rust-бэкенд периодически (каждые 500мс) вызывает `eval_with_callback()`,
- *      которая через WebView2 ExecuteScriptAsync читает `window.__browserData`
- *   3. Rust-колбэк получает данные и эмитит Tauri-события в главное окно через `app.emit()`
+ *   2. Главное окно (React) периодически вызывает `webviewRef.current.executeJavaScript()`
+ *      для чтения `window.__browserData`
+ *   3. Или preload сам отправляет IPC-сообщения через `postMessage`
  *
- * ┌─────────────────────┐      eval_with_callback       ┌──────────────┐
- * │  Child Webview       │ ◄─────────────────────────   │    Rust      │
- * │  window.__browserData│ ──────────────────────────►   │  app.emit()  │
- * │  = { video, ... }    │    JSON.stringify(data)       │              │
- * └─────────────────────┘                                └──────┬───────┘
- *                                                               │
- *                                                      Tauri Event System
- *                                                               │
- * ┌─────────────────────┐                                       │
- * │  Main Window        │ ◄──────────────────────────────────────┘
- * │  BrowserPlayer.jsx  │    browser-video-play, browser-video-pause, etc.
- * │  listen("browser-…")│
- * └─────────────────────┘
+ * ┌─────────────────────┐   executeJavaScript()     ┌──────────────┐
+ * │  <webview>           │ ◄─────────────────────   │  Main Window │
+ * │  window.__browserData│ ──────────────────────►   │  React App   │
+ * │  = { video, ... }    │   JSON.stringify(data)    │              │
+ * └─────────────────────┘                            └──────────────┘
  *
  * ## Cross-frame scanning
  *
- * С флагами --disable-web-security и --disable-site-isolation-trials
- * (устанавливаются через WebviewBuilder::additional_browser_args() в lib.rs)
- * отключается Same-Origin Policy для этого webview, что позволяет из top-frame
- * скрипта получать доступ к contentDocument/contentWindow любого iframe.
+ * С флагом disablewebsecurity на теге <webview> отключается Same-Origin Policy,
+ * что позволяет из top-frame скрипта получать доступ к contentDocument/contentWindow
+ * любого iframe.
  *
  * MutationObserver устанавливается как на top-level document.body, так и
  * на body каждого найденного iframe для отслеживания динамически создаваемых
@@ -52,7 +44,7 @@
   // ═══════════════════════════════════════════════════════════════════
   // Инициализация глобального хранилища данных
   // ═══════════════════════════════════════════════════════════════════
-  // Rust-бэкенд читает эту переменную через eval_with_callback()
+  // Главное окно читает эту переменную через executeJavaScript()
   window.__browserData = {
     video: null,       // текущее состояние <video>: { found, src, currentTime, paused, ... }
     frameCount: 0,     // количество iframe на странице
@@ -75,7 +67,7 @@
   const scannedFrames = new WeakSet(); // Уже просканированные Document'ы
 
   // ═══════════════════════════════════════════════════════════════════
-  // Обновление глобального состояния (читается Rust-поллингом)
+  // Обновление глобального состояния (читается React-поллингом)
   // ═══════════════════════════════════════════════════════════════════
   function updateBrowserData() {
     var data = {
@@ -91,7 +83,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // Логирование (только в консоль дочернего webview)
+  // Логирование (только в консоль webview)
   // ═══════════════════════════════════════════════════════════════════
   function log(level, msg, data) {
     if (level === "error") console.error("[BrowserPreload]", msg, data || "");
@@ -294,11 +286,6 @@
   // ═══════════════════════════════════════════════════════════════════════
   // Диагностика доступа к iframe (CORS test)
   // ═══════════════════════════════════════════════════════════════════════
-  //
-  // Пытается получить contentDocument для каждого iframe на странице.
-  // Если --disable-web-security работает, все iframe должны быть доступны.
-  // Результаты сохраняются в __browserData.iframeAccess и читаются
-  // Rust-поллингом через eval_with_callback.
   function testIframeAccess() {
     var results = [];
     var iframes = document.querySelectorAll("iframe");
@@ -325,7 +312,6 @@
         }
       } catch (e) {
         result.error = e.message || String(e);
-        // Если ошибка содержит "Blocked" — это CORS
         if (result.error.indexOf("Blocked") !== -1) {
           result.corsError = true;
         }
@@ -356,7 +342,6 @@
         (window.__browserData.corsBlocked ? " (CORS BLOCKED!)" : " (CORS disabled)"),
     );
 
-    // Если есть CORS-блокировки — логируем детали
     if (window.__browserData.corsBlocked) {
       results.forEach(function (r) {
         if (r.corsError) {
@@ -404,11 +389,9 @@
     }
 
     // Диагностика доступа к iframe (CORS test)
-    // Если --disable-web-security работает корректно, все iframe
-    // должны быть accessible. Результаты читаются Rust-поллингом.
     testIframeAccess();
 
-    // Периодическая проверка (резервный механизм, пока Rust-поллинг не подхватит)
+    // Периодическая проверка (резервный механизм)
     pollTimer = setInterval(function () {
       if (!video) {
         log("debug", "Periodic re-scan (no video attached)");
