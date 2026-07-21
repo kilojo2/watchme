@@ -222,7 +222,7 @@ export default function Home() {
           {/* ═══ Action columns — bordered glass cards ═══ */}
           <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
             {/* Create Room */}
-            <div className="border border-white/15 p-8 lg:p-10 bg-black/10 backdrop-blur-md flex flex-col gap-[14px]">
+            <div className="border border-white/15 p-8 lg:p-10 bg-black/10 backdrop-blur-md rounded-3xl flex flex-col gap-[14px]">
               <h3 className="text-white text-[12px] font-semibold uppercase tracking-[0.2em]">
                 Create Room
               </h3>
@@ -238,7 +238,7 @@ export default function Home() {
             </div>
 
             {/* Join Room */}
-            <div className="border border-white/15 p-8 lg:p-10 bg-black/10 backdrop-blur-md flex flex-col gap-[14px]">
+            <div className="border border-white/15 p-8 lg:p-10 bg-black/10 backdrop-blur-md rounded-3xl flex flex-col gap-[14px]">
               <h3 className="text-white text-[12px] font-semibold uppercase tracking-[0.2em]">
                 Join Room
               </h3>
@@ -252,7 +252,7 @@ export default function Home() {
                   onChange={(e) => setJoinInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
                   placeholder="Room code or link..."
-                  className="flex-1 min-w-0 border-b border-white/30 bg-white/5 px-4 py-3 text-white placeholder:text-white/40 focus:bg-white/10 transition-colors text-sm outline-none"
+                  className="flex-1 min-w-0 border border-white/30 bg-white/5 px-6 py-3 text-white placeholder:text-white/40 rounded-full focus:bg-white/10 focus:border-white/50 transition-colors focus:outline-none w-full"
                 />
                 <button
                   onClick={handleJoinRoom}
