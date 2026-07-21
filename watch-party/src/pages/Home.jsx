@@ -5,6 +5,7 @@ import { database } from "../lib/firebase";
 import { isDesktop } from "../lib/runtime";
 import useAuth from "../hooks/useAuth";
 import CreateRoomModal from "../components/CreateRoomModal";
+import PublicRoomList from "../components/PublicRoomList";
 
 // ─── Constants ───────────────────────────────────────────────
 const RECENT_ROOMS_KEY = "watchparty_recentRooms";
@@ -200,6 +201,15 @@ export default function Home() {
     [navigate],
   );
 
+  const handlePublicRoomJoin = useCallback(
+    (roomId) => {
+      pushRecentRoom(roomId);
+      setRecentRooms(getRecentRooms());
+      navigate(`/room/${roomId}`);
+    },
+    [navigate],
+  );
+
   return (
     <div className="min-h-screen bg-obsidian flex flex-col font-roobert">
       {/* ═══ Hero — iridescent backdrop with monumental title ═══ */}
@@ -282,61 +292,12 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ═══ Public Rooms — live from Firebase ═══ */}
-          <div
-            className="w-full max-w-5xl mx-auto animate-fade-in"
-            style={{ animationDelay: "100ms" }}
-          >
-            <p className="text-[11px] font-[400] uppercase tracking-[0.15em] text-felt-gray mb-[14px]">
-              Public Rooms
-            </p>
-
-            {publicRoomsLoading && (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border border-white/30 border-t-white animate-spin rounded-none" />
-                <span className="text-felt-gray text-[11px] uppercase tracking-[0.15em] font-[400]">
-                  Loading...
-                </span>
-              </div>
-            )}
-
-            {!publicRoomsLoading && publicRoomsList.length === 0 && (
-              <p className="text-felt-gray text-[12px] leading-[1.21] font-[400]">
-                No public rooms yet. Create one to get started!
-              </p>
-            )}
-
-            {publicRoomsList.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {publicRoomsList.map((room) => (
-                  <div
-                    key={room.id}
-                    onClick={() => navigate(`/room/${room.id}`)}
-                    className="border border-white/15 p-6 bg-black/10 backdrop-blur-md rounded-3xl
-                               flex flex-col gap-3 cursor-pointer
-                               hover:bg-white/5 transition-all duration-[800ms]
-                               ease-[cubic-bezier(0.19,1,0.22,1)]"
-                  >
-                    <h4 className="text-white text-[14px] font-[500] truncate">
-                      {room.name || room.id}
-                    </h4>
-                    <div className="flex items-center gap-3 text-[11px] text-felt-gray">
-                      <span>👥 {room.memberCount ?? 0}</span>
-                      <span
-                        className={
-                          room.status === "playing"
-                            ? "text-green-400"
-                            : "text-felt-gray"
-                        }
-                      >
-                        ● {room.status || "idle"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* ═══ Public Rooms — glass list component ═══ */}
+          <PublicRoomList
+            rooms={publicRoomsList}
+            loading={publicRoomsLoading}
+            onJoin={handlePublicRoomJoin}
+          />
 
           {/* ═══ Recent Rooms — ghost pill tags ═══ */}
           {recentRooms.length > 0 && (
