@@ -107,10 +107,14 @@ export default function useRoom(roomId, user, displayName, onRoomData) {
       memberCount: increment(1),
     });
 
-    // Increment memberCount in publicRooms index if it exists
-    await update(ref(database, `publicRooms/${roomId}`), {
-      memberCount: increment(1),
-    });
+    // Increment memberCount in publicRooms index (silently skip if room is private)
+    try {
+      await update(ref(database, `publicRooms/${roomId}`), {
+        memberCount: increment(1),
+      });
+    } catch {
+      // private room — no publicRooms node exists
+    }
   }, [roomId, user, displayName]);
 
   // ================================================================
@@ -127,10 +131,14 @@ export default function useRoom(roomId, user, displayName, onRoomData) {
       memberCount: increment(-1),
     });
 
-    // Decrement memberCount in publicRooms index if it exists
-    await update(ref(database, `publicRooms/${roomId}`), {
-      memberCount: increment(-1),
-    });
+    // Decrement memberCount in publicRooms index (silently skip if room is private)
+    try {
+      await update(ref(database, `publicRooms/${roomId}`), {
+        memberCount: increment(-1),
+      });
+    } catch {
+      // private room — no publicRooms node exists
+    }
   }, [roomId, user]);
 
   return { createRoom, joinRoom, leaveRoom };

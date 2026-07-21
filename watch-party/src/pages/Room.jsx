@@ -49,11 +49,14 @@ function RoomContent() {
 
   const [playerType, setPlayerType] = useState("youtube");
 
+  const { roomId } = useParams();
+  const currentRoomId = roomId || "";
+
   // ─── Password gate for private rooms ──────────────────────────────
   const [passwordVerified, setPasswordVerified] = useState(() => {
     // Check sessionStorage so verified users don't re-enter on refresh
     try {
-      return sessionStorage.getItem(`room_pw_${roomId}`) === "verified";
+      return sessionStorage.getItem(`room_pw_${currentRoomId}`) === "verified";
     } catch {
       return false;
     }
@@ -61,15 +64,12 @@ function RoomContent() {
 
   const handlePasswordVerified = useCallback(() => {
     try {
-      sessionStorage.setItem(`room_pw_${roomId}`, "verified");
+      sessionStorage.setItem(`room_pw_${currentRoomId}`, "verified");
     } catch {
       // ignore
     }
     setPasswordVerified(true);
-  }, [roomId]);
-
-  const { roomId } = useParams();
-  const currentRoomId = roomId || "";
+  }, [currentRoomId]);
 
   useEffect(() => {
     if (currentRoomId) {
