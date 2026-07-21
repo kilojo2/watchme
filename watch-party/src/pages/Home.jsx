@@ -6,7 +6,6 @@ import { isDesktop } from "../lib/runtime";
 import useAuth from "../hooks/useAuth";
 import CreateRoomModal from "../components/CreateRoomModal";
 import PublicRoomList from "../components/PublicRoomList";
-import RoomPreview from "../components/RoomPreview";
 
 // ─── Constants ───────────────────────────────────────────────
 const RECENT_ROOMS_KEY = "watchparty_recentRooms";
@@ -212,7 +211,18 @@ export default function Home() {
       <div className="relative flex flex-col items-center pt-16 pb-24 px-6 overflow-hidden">
         {/* ═══ TRANSPARENT HEADER — floats over iridescent glow ═══ */}
         <header className="absolute top-0 left-0 right-0 z-20 w-full max-w-5xl mx-auto flex items-center justify-between px-6 pt-4 sm:pt-5">
-          <span className="text-paper text-[16px] sm:text-[18px] font-[300] tracking-[0.02em]">
+          <span className="flex items-center gap-2.5 text-paper text-[16px] sm:text-[18px] font-[300] tracking-[0.02em]">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 28 28"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="shrink-0"
+            >
+              <path d="M6 3L25 14L6 25V3Z" fill="#c8a87c" />
+              <path d="M8 5.5L22 14L8 22.5V5.5Z" fill="#dabf94" />
+            </svg>
             WatchMe
           </span>
           <ProfileCard
@@ -247,13 +257,15 @@ export default function Home() {
 
           {/* ── Unified action area ── */}
           <div className="mt-10 w-full max-w-[520px]">
-            {/* Primary: Create Room */}
-            <button
-              onClick={handleCreateRoom}
-              className="w-full ghost-pill text-[15px] py-4 mb-3"
-            >
-              Create a Room
-            </button>
+            {/* Primary: Create Room — centered capsule */}
+            <div className="flex justify-center mb-4">
+              <button
+                onClick={handleCreateRoom}
+                className="ghost-pill text-[15px] py-3 px-10"
+              >
+                Create a Room
+              </button>
+            </div>
 
             {/* Secondary: Join Room */}
             <div className="flex gap-3 items-center">
@@ -277,13 +289,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* ═════════════════════════════════════════════════════════
-          PREVIEW — visual mockup of the WatchMe experience
-          ═════════════════════════════════════════════════════════ */}
-      <div className="-mt-10 pb-20 px-6">
-        <RoomPreview />
       </div>
 
       {/* ═════════════════════════════════════════════════════════
