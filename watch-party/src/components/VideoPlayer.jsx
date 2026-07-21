@@ -43,20 +43,21 @@ export default function VideoPlayer({ roomId }) {
 
   if (!roomState.currentVideoId) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-black text-felt-gray text-[14px]">
+      <div className="w-full aspect-video flex items-center justify-center bg-black text-felt-gray text-[14px]">
         Paste a YouTube link to start.
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full aspect-video relative">
       <YouTube
         key={roomState.currentVideoId}
         videoId={roomState.currentVideoId}
-        opts={YT_OPTS}
+        opts={{ width: '100%', height: '100%', playerVars: YT_OPTS.playerVars }}
         onReady={onReady}
         onStateChange={onStateChange}
+        className="absolute top-0 left-0 w-full h-full"
         iframeClassName="w-full h-full"
       />
     </div>
