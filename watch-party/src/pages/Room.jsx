@@ -338,8 +338,10 @@ function RoomContent() {
               )}
 
               {/* YouTube Video Player */}
-              <div className="flex-1 w-full min-h-0 bg-obsidian mb-4 flex flex-col">
-                <VideoPlayer roomId={currentRoomId} />
+              <div className="flex-1 w-full min-h-0 bg-obsidian mb-4 flex items-center justify-center overflow-hidden">
+                <div className="w-full max-w-full max-h-full aspect-video">
+                  <VideoPlayer roomId={currentRoomId} />
+                </div>
               </div>
             </>
           )}

@@ -43,32 +43,21 @@ export default function VideoPlayer({ roomId }) {
 
   if (!roomState.currentVideoId) {
     return (
-      <div
-        style={{
-          width: "100%",
-          flex: 1,
-          minHeight: 0,
-          background: "#000000",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#6d6d6d",
-          fontSize: 14,
-        }}
-      >
+      <div className="w-full h-full flex items-center justify-center bg-black text-felt-gray text-[14px]">
         Paste a YouTube link to start.
       </div>
     );
   }
 
   return (
-    <div style={{ width: "100%", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div className="w-full h-full">
       <YouTube
         key={roomState.currentVideoId}
         videoId={roomState.currentVideoId}
         opts={YT_OPTS}
         onReady={onReady}
         onStateChange={onStateChange}
+        iframeClassName="w-full h-full"
       />
     </div>
   );
