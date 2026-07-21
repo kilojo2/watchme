@@ -341,7 +341,7 @@ export default function Home() {
           {/* ═══ Recent Rooms — ghost pill tags ═══ */}
           {recentRooms.length > 0 && (
             <div
-              className="w-full animate-fade-in"
+              className="w-full max-w-5xl mx-auto animate-fade-in"
               style={{ animationDelay: "200ms" }}
             >
               <p className="text-[11px] font-[400] uppercase tracking-[0.15em] text-felt-gray mb-[14px]">
