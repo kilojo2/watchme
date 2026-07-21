@@ -207,30 +207,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-obsidian flex flex-col font-roobert">
       {/* ═════════════════════════════════════════════════════════
-          HEADER — brand + user
-          ═════════════════════════════════════════════════════════ */}
-      <header className="w-full max-w-5xl mx-auto flex items-center justify-between px-6 pt-4 sm:pt-5">
-        <div className="flex items-center gap-3">
-          <img
-            src="/assets/logo-mark.png"
-            alt="WatchMe"
-            className="h-[20px] sm:h-[22px] w-auto object-contain shrink-0"
-          />
-          <span className="text-white text-[16px] sm:text-[18px] font-[300] tracking-[0.02em]">
-            WatchMe
-          </span>
-          <span className="text-white/30 text-[10px] sm:text-[11px] font-[400] tracking-[0.15em] uppercase hidden sm:inline">
-            WATCH TOGETHER.
-          </span>
-        </div>
-        <ProfileCard
-          displayName={displayName}
-          updateDisplayName={updateDisplayName}
-          loading={loading}
-        />
-      </header>
-
-      {/* ═════════════════════════════════════════════════════════
           HERO — full-viewport iridescent-backed section
           ═════════════════════════════════════════════════════════ */}
       <div className="relative flex flex-col items-center pt-12 pb-24 px-6 overflow-hidden">
