@@ -6,6 +6,7 @@ import { isDesktop } from "../lib/runtime";
 import useAuth from "../hooks/useAuth";
 import CreateRoomModal from "../components/CreateRoomModal";
 import PublicRoomList from "../components/PublicRoomList";
+import RoomPreview from "../components/RoomPreview";
 
 // ─── Constants ───────────────────────────────────────────────
 const RECENT_ROOMS_KEY = "watchparty_recentRooms";
@@ -76,18 +77,12 @@ function ProfileCard({ displayName, updateDisplayName, loading }) {
             maxLength={24}
             className="w-36 editorial-input text-sm"
           />
-          <button
-            onClick={handleSave}
-            className="ghost-pill-sm"
-          >
+          <button onClick={handleSave} className="ghost-pill-sm">
             ✓
           </button>
         </div>
       ) : (
-        <button
-          onClick={handleStartEdit}
-          className="ghost-pill-sm"
-        >
+        <button onClick={handleStartEdit} className="ghost-pill-sm">
           {displayName}
         </button>
       )}
@@ -159,7 +154,6 @@ export default function Home() {
             id,
             ...room,
           }));
-          // Sort by createdAt descending (newest first)
           list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
           setPublicRoomsList(list);
         }
@@ -212,134 +206,152 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-obsidian flex flex-col font-roobert">
-      {/* ═══ Hero — iridescent backdrop with monumental title ═══ */}
-      <div className="relative flex flex-col items-center justify-center flex-1 px-6 py-16 overflow-hidden">
-        {/* Iridescent backdrop — the only chromatic surface */}
+      {/* ═════════════════════════════════════════════════════════
+          HERO — full-viewport iridescent-backed section
+          ═════════════════════════════════════════════════════════ */}
+      <div className="relative flex flex-col items-center pt-12 pb-24 px-6 overflow-hidden">
+        {/* Iridescent backdrop */}
         <div
-          className="absolute inset-0 hero-iridescent animate-iridescent opacity-40 pointer-events-none"
-          style={{ filter: "blur(120px) saturate(1.4)" }}
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[800px] hero-iridescent animate-iridescent opacity-30 pointer-events-none"
+          style={{ filter: "blur(140px) saturate(1.4)" }}
         />
 
-        {/* Content */}
+        {/* ── Minimal brand bar ── */}
         <div
-          className={`relative z-10 w-full max-w-[1078px] mx-auto flex flex-col items-center gap-[46px]
+          className={`relative z-10 w-full max-w-5xl mx-auto flex items-center justify-between mb-16
+            transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]
+            ${visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"}`}
+        >
+          <div className="flex items-baseline gap-3">
+            <span className="text-white text-[18px] font-[300] tracking-[0.02em]">
+              WatchMe
+            </span>
+            <span className="text-white/30 text-[11px] font-[400] tracking-[0.15em] uppercase hidden sm:inline">
+              watch together.
+            </span>
+          </div>
+          <ProfileCard
+            displayName={displayName}
+            updateDisplayName={updateDisplayName}
+            loading={loading}
+          />
+        </div>
+
+        {/* ── Hero content ── */}
+        <div
+          className={`relative z-10 w-full max-w-5xl mx-auto flex flex-col items-center
             transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]
             ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
         >
-          {/* ═══ Monumental Title — whisper weight 300 @ 78px ═══ */}
-          <div className="text-center max-w-[900px]">
-            <h1 className="text-[78px] font-[300] text-paper leading-[1.1] tracking-normal font-roobert">
-              Watch Party
-            </h1>
-            <p className="mt-[14px] text-body text-felt-gray font-roobert font-[400] leading-[1.21] max-w-[600px] mx-auto">
-              Watch YouTube with friends in your browser, or download the Desktop App
-              to watch streams and movies from any website.
-            </p>
-          </div>
+          {/* Headline */}
+          <h1 className="text-[64px] sm:text-[78px] lg:text-[94px] font-[300] text-paper leading-[1.05] tracking-[-0.02em] text-center max-w-[900px]">
+            Watch anything.
+            <br />
+            <span className="font-[400] italic">Together.</span>
+          </h1>
 
-          {/* ═══ Profile — floating on black, no bg fill ═══ */}
-          <div className="w-full flex justify-center">
-            <ProfileCard
-              displayName={displayName}
-              updateDisplayName={updateDisplayName}
-              loading={loading}
-            />
-          </div>
+          {/* Supporting text */}
+          <p className="mt-5 max-w-[540px] text-[16px] sm:text-[18px] text-felt-gray font-[400] leading-[1.3] text-center">
+            Watch movies, YouTube and streams together with your friends — perfectly synced, wherever you are.
+          </p>
 
-          {/* ═══ Action columns — bordered glass cards ═══ */}
-          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-            {/* Create Room */}
-            <div className="border border-white/15 p-8 lg:p-10 bg-black/10 backdrop-blur-md rounded-3xl flex flex-col gap-[14px]">
-              <h3 className="text-white text-[12px] font-semibold uppercase tracking-[0.2em]">
-                Create Room
-              </h3>
-              <p className="text-body-sm text-white/70 leading-[1.15] font-[400]">
-                Generate a new room and invite friends with its code.
-              </p>
-              <button
-                onClick={handleCreateRoom}
-                className="ghost-pill self-start mt-[14px]"
-              >
-                Create Room
-              </button>
-            </div>
+          {/* ── Unified action area ── */}
+          <div className="mt-10 w-full max-w-[520px]">
+            {/* Primary: Create Room */}
+            <button
+              onClick={handleCreateRoom}
+              className="w-full ghost-pill text-[15px] py-4 mb-3"
+            >
+              Create a Room
+            </button>
 
-            {/* Join Room */}
-            <div className="border border-white/15 p-8 lg:p-10 bg-black/10 backdrop-blur-md rounded-3xl flex flex-col gap-[14px]">
-              <h3 className="text-white text-[12px] font-semibold uppercase tracking-[0.2em]">
-                Join Room
-              </h3>
-              <p className="text-body-sm text-white/70 leading-[1.15] font-[400]">
-                Enter a room code or link to join an existing watch party.
-              </p>
-              <div className="flex gap-[14px] items-end mt-[14px]">
+            {/* Secondary: Join Room */}
+            <div className="flex gap-3 items-center">
+              <div className="flex-1 relative">
                 <input
                   type="text"
                   value={joinInput}
                   onChange={(e) => setJoinInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
-                  placeholder="Room code or link..."
-                  className="flex-1 min-w-0 border border-white/30 bg-white/5 px-6 py-3 text-white placeholder:text-white/40 rounded-full focus:bg-white/10 focus:border-white/50 transition-colors focus:outline-none w-full"
+                  placeholder="Enter room code or invite link..."
+                  className="w-full border border-white/20 bg-white/[0.03] px-5 py-3 text-white text-[13px] placeholder:text-white/25 rounded-full focus:bg-white/[0.06] focus:border-white/40 transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] focus:outline-none"
                 />
-                <button
-                  onClick={handleJoinRoom}
-                  disabled={!joinInput.trim()}
-                  className="ghost-pill shrink-0"
-                >
-                  Go
-                </button>
               </div>
+              <button
+                onClick={handleJoinRoom}
+                disabled={!joinInput.trim()}
+                className="ghost-pill shrink-0 px-6 py-3 text-[13px]"
+              >
+                Join
+              </button>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* ═══ Public Rooms — glass list component ═══ */}
+      {/* ═════════════════════════════════════════════════════════
+          PREVIEW — visual mockup of the WatchMe experience
+          ═════════════════════════════════════════════════════════ */}
+      <div className="-mt-10 pb-20 px-6">
+        <RoomPreview />
+      </div>
+
+      {/* ═════════════════════════════════════════════════════════
+          SECONDARY CONTENT — rooms, recent, desktop app
+          ═════════════════════════════════════════════════════════ */}
+      <div
+        className={`w-full max-w-5xl mx-auto px-6 pb-20 space-y-16
+          transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]
+          ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
+      >
+        {/* ── Public Rooms ── */}
+        <div className="animate-fade-in delay-200">
           <PublicRoomList
             rooms={publicRoomsList}
             loading={publicRoomsLoading}
             onJoin={handlePublicRoomJoin}
           />
+        </div>
 
-          {/* ═══ Recent Rooms — ghost pill tags ═══ */}
-          {recentRooms.length > 0 && (
-            <div
-              className="w-full max-w-5xl mx-auto animate-fade-in"
-              style={{ animationDelay: "200ms" }}
-            >
-              <p className="text-[11px] font-[400] uppercase tracking-[0.15em] text-felt-gray mb-[14px]">
-                Recent Rooms
-              </p>
-              <div className="flex flex-wrap gap-[8px]">
-                {recentRooms.map((roomId) => (
-                  <RecentRoomTag
-                    key={roomId}
-                    roomId={roomId}
-                    onClick={handleRecentClick}
-                  />
-                ))}
-              </div>
+        {/* ── Recent Rooms ── */}
+        {recentRooms.length > 0 && (
+          <div className="animate-fade-in delay-300">
+            <p className="text-[11px] font-[400] uppercase tracking-[0.15em] text-felt-gray mb-[14px]">
+              Recent Rooms
+            </p>
+            <div className="flex flex-wrap gap-[8px]">
+              {recentRooms.map((roomId) => (
+                <RecentRoomTag
+                  key={roomId}
+                  roomId={roomId}
+                  onClick={handleRecentClick}
+                />
+              ))}
             </div>
-          )}
+          </div>
+        )}
 
-          {/* ═══ Download Desktop App ═══ */}
-          {!isDesktop() && (
+        {/* ── Desktop App ── */}
+        {!isDesktop() && (
+          <div className="flex justify-center animate-fade-in delay-400">
             <a
               href="https://github.com/kilojo2/watchme/releases"
               target="_blank"
               rel="noopener noreferrer"
-              className="ghost-pill inline-flex items-center gap-2"
+              className="ghost-pill inline-flex items-center gap-2 text-[13px]"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
               </svg>
               Download Desktop App
             </a>
-          )}
+          </div>
+        )}
 
-          {/* ═══ Footer — 11px Felt Gray address block ═══ */}
-          <p className="text-[11px] text-felt-gray text-center uppercase tracking-[0.1em] font-[400] leading-[1.36]">
-            Powered by Firebase Realtime Database &middot; Open Source
-          </p>
-        </div>
+        {/* ── Footer ── */}
+        <p className="text-[11px] text-felt-gray text-center uppercase tracking-[0.1em] font-[400] leading-[1.36]">
+          Powered by Firebase Realtime Database &middot; Open Source
+        </p>
       </div>
 
       {/* ═══ Create Room Modal ═══ */}
