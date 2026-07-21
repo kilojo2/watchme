@@ -35,18 +35,9 @@ export default function UserList() {
 
   const members = roomData?.members || {};
   const entries = Object.entries(members);
-  const count = entries.length;
 
   return (
-    <div className="flex flex-col">
-      {/* Header */}
-      <div className="px-[34px] py-3 border-b border-white/5">
-        <h3 className="text-[11px] font-medium text-felt-gray uppercase tracking-[0.15em]">
-          Online — <span className="text-paper font-normal">{count}</span>
-          {count === 1 ? " participant" : " participants"}
-        </h3>
-      </div>
-
+    <div className="flex flex-col h-full">
       {/* List */}
       <div className="flex-1 overflow-y-auto px-[26px] py-2 space-y-1">
         {entries.map(([uid, m]) => {

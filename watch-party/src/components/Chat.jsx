@@ -45,17 +45,10 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-full bg-inkstone">
-      {/* ── Header ── */}
-      <div className="px-[34px] py-3 border-b border-white/5 shrink-0">
-        <h3 className="text-[11px] font-medium text-felt-gray uppercase tracking-[0.15em]">
-          Chat
-        </h3>
-      </div>
-
       {/* ── Messages (editorial flow) ── */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto min-h-0 px-[34px] py-4 space-y-5 scroll-smooth"
+        className="flex-1 overflow-y-auto min-h-0 px-[26px] py-4 space-y-5 scroll-smooth"
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-felt-gray text-sm gap-1">
@@ -100,7 +93,7 @@ export default function Chat() {
       {/* ── Input ── */}
       <form
         onSubmit={handleSend}
-        className="shrink-0 px-[34px] py-3 border-t border-white/5 bg-inkstone"
+        className="shrink-0 px-[26px] py-3 border-t border-white/5 bg-inkstone"
       >
         <div className="flex items-center gap-2">
           <input

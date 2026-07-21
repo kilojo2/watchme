@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ref, set, serverTimestamp } from "firebase/database";
 import { database } from "../lib/firebase";
 import { generateRoomId } from "../lib/roomUtils";
 
 /**
- * CreateRoomModal — модальное окно создания комнаты.
+ * CreateRoomModal — модальное окно создания комнаты с редизайном.
  *
  * Позволяет задать:
  *   - название комнаты (name)
@@ -22,18 +22,29 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setRoomName("");
     setIsPublic(true);
     setPassword("");
     setCreating(false);
     setError("");
-  };
+  }, []);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     reset();
     onClose();
-  };
+  }, [reset, onClose]);
+
+  // ─── Keyboard: Escape closes ─────────────────────────────────
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, handleClose]);
 
   const handleCreate = async () => {
     // Validation
@@ -93,32 +104,44 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
     }
   };
 
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleCreate();
+      }
+    },
+    [handleCreate],
+  );
+
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/80 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/80 backdrop-blur-sm animate-fade-in"
       onClick={handleClose}
     >
       <div
-        className="relative w-full max-w-md mx-4 border border-white/15 p-[34px] bg-inkstone backdrop-blur-md rounded-3xl"
+        className="relative w-full max-w-md mx-4 border border-white/15 p-[34px] bg-inkstone rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           onClick={handleClose}
-          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-felt-gray hover:text-paper transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]"
+          className="absolute top-5 right-5 w-6 h-6 flex items-center justify-center text-felt-gray hover:text-paper transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]"
         >
-          ✕
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
         </button>
 
-        {/* Title */}
-        <h2 className="text-white text-[12px] font-semibold uppercase tracking-[0.2em] mb-6">
-          Create Room
+        {/* Header */}
+        <h2 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.2em] mb-7">
+          CREATE ROOM
         </h2>
 
         {/* Room Name */}
-        <label className="block mb-5">
+        <label className="block mb-6">
           <span className="text-[11px] text-felt-gray uppercase tracking-[0.15em] font-[400] block mb-2">
             Room Name
           </span>
@@ -127,9 +150,9 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
             value={roomName}
             onChange={(e) => {
               setRoomName(e.target.value);
-              setError("");
+              if (error) setError("");
             }}
-            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            onKeyDown={handleKeyDown}
             placeholder="e.g. Movie Night"
             maxLength={32}
             className="editorial-input text-sm w-full"
@@ -137,30 +160,30 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
           />
         </label>
 
-        {/* Visibility toggle */}
-        <label className="block mb-5">
-          <span className="text-[11px] text-felt-gray uppercase tracking-[0.15em] font-[400] block mb-2">
+        {/* Visibility — segmented control */}
+        <label className="block mb-6">
+          <span className="text-[11px] text-felt-gray uppercase tracking-[0.15em] font-[400] block mb-3">
             Visibility
           </span>
-          <div className="flex gap-2">
+          <div className="flex bg-inkstone border border-white/10 rounded-[75px] p-[3px]">
             <button
-              onClick={() => { setIsPublic(true); setError(""); }}
-              className={`px-[20px] py-[9px] text-body-sm font-[400] rounded-[75px] border transition-all
+              onClick={() => { setIsPublic(true); if (error) setError(""); }}
+              className={`flex-1 px-5 py-[9px] text-body-sm font-[400] rounded-[75px] transition-all
                 duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] ${
                   isPublic
-                    ? "bg-paper text-obsidian border-paper"
-                    : "bg-transparent text-felt-gray border-white/30 hover:text-paper hover:border-white/60"
+                    ? "bg-paper text-obsidian shadow-sm"
+                    : "bg-transparent text-felt-gray hover:text-paper"
                 }`}
             >
               Public
             </button>
             <button
-              onClick={() => { setIsPublic(false); setError(""); }}
-              className={`px-[20px] py-[9px] text-body-sm font-[400] rounded-[75px] border transition-all
+              onClick={() => { setIsPublic(false); if (error) setError(""); }}
+              className={`flex-1 px-5 py-[9px] text-body-sm font-[400] rounded-[75px] transition-all
                 duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] ${
                   !isPublic
-                    ? "bg-paper text-obsidian border-paper"
-                    : "bg-transparent text-felt-gray border-white/30 hover:text-paper hover:border-white/60"
+                    ? "bg-paper text-obsidian shadow-sm"
+                    : "bg-transparent text-felt-gray hover:text-paper"
                 }`}
             >
               Private
@@ -168,9 +191,13 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
           </div>
         </label>
 
-        {/* Password (only for private rooms) */}
-        {!isPublic && (
-          <label className="block mb-5 animate-fade-in">
+        {/* Password (only for private rooms) — animated */}
+        <div
+          className={`overflow-hidden transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] ${
+            !isPublic ? "max-h-32 opacity-100 mb-6" : "max-h-0 opacity-0 mb-0"
+          }`}
+        >
+          <label className="block">
             <span className="text-[11px] text-felt-gray uppercase tracking-[0.15em] font-[400] block mb-2">
               Password
             </span>
@@ -179,14 +206,15 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
-                setError("");
+                if (error) setError("");
               }}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              onKeyDown={handleKeyDown}
               placeholder="Enter a room password..."
               className="editorial-input text-sm w-full"
+              disabled={isPublic}
             />
           </label>
-        )}
+        </div>
 
         {/* Error */}
         {error && (
@@ -196,7 +224,7 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-3 mt-6">
+        <div className="flex items-center gap-3 mt-2">
           <button
             onClick={handleClose}
             className="ghost-pill"
@@ -208,7 +236,14 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
             disabled={creating}
             className="ghost-pill"
           >
-            {creating ? "Creating..." : "Create Room"}
+            {creating ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-white/30 border-t-white animate-spin rounded-full" />
+                Creating...
+              </span>
+            ) : (
+              "Create Room"
+            )}
           </button>
         </div>
       </div>
