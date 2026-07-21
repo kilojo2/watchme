@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
-import { getDatabase, connectDatabaseEmulator, ref, serverTimestamp } from "firebase/database";
+import { getDatabase, connectDatabaseEmulator, ref, serverTimestamp, increment } from "firebase/database";
 
 /**
  * Firebase configuration.
@@ -53,7 +53,7 @@ export async function connectFirebaseEmulators() {
  * Use this when writing timestamps to RTDB so all clients
  * share a consistent time source.
  */
-export { serverTimestamp };
+export { serverTimestamp, increment };
 
 /**
  * Shortcut: get a Firebase DatabaseReference for a room node.

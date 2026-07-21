@@ -1,24 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ref, set, serverTimestamp } from "firebase/database";
+import { ref, onValue } from "firebase/database";
 import { database } from "../lib/firebase";
 import { isDesktop } from "../lib/runtime";
 import useAuth from "../hooks/useAuth";
+import CreateRoomModal from "../components/CreateRoomModal";
 
 // ─── Constants ───────────────────────────────────────────────
 const RECENT_ROOMS_KEY = "watchparty_recentRooms";
 const MAX_RECENT = 5;
-
-// ─── Helpers ─────────────────────────────────────────────────
-
-function generateRoomId() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let id = "";
-  for (let i = 0; i < 6; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-}
 
 function getRecentRooms() {
   try {
@@ -136,25 +126,52 @@ export default function Home() {
     return () => window.removeEventListener("focus", handleFocus);
   }, []);
 
-  const handleCreateRoom = useCallback(async () => {
-    const roomId = generateRoomId();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [publicRoomsList, setPublicRoomsList] = useState([]);
+  const [publicRoomsLoading, setPublicRoomsLoading] = useState(true);
 
-    try {
-      const roomRef = ref(database, `rooms/${roomId}`);
-      await set(roomRef, {
-        currentVideoId: "",
-        status: "paused",
-        lastPosition: 0,
-        createdAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.error("Home: failed to create room in Firebase", err);
-    }
+  const handleCreateRoom = useCallback(() => {
+    setShowCreateModal(true);
+  }, []);
 
-    pushRecentRoom(roomId);
-    setRecentRooms(getRecentRooms());
-    navigate(`/room/${roomId}`);
-  }, [navigate]);
+  const handleModalCreate = useCallback(
+    (roomId) => {
+      pushRecentRoom(roomId);
+      setRecentRooms(getRecentRooms());
+      setShowCreateModal(false);
+      navigate(`/room/${roomId}`);
+    },
+    [navigate],
+  );
+
+  // ─── Public Rooms — live query from Firebase ──────────────────
+  useEffect(() => {
+    const publicRoomsRef = ref(database, "publicRooms");
+    const unsubscribe = onValue(
+      publicRoomsRef,
+      (snapshot) => {
+        const data = snapshot.val();
+        if (!data) {
+          setPublicRoomsList([]);
+        } else {
+          const list = Object.entries(data).map(([id, room]) => ({
+            id,
+            ...room,
+          }));
+          // Sort by createdAt descending (newest first)
+          list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          setPublicRoomsList(list);
+        }
+        setPublicRoomsLoading(false);
+      },
+      (error) => {
+        console.error("Home: failed to load public rooms", error);
+        setPublicRoomsList([]);
+        setPublicRoomsLoading(false);
+      },
+    );
+    return unsubscribe;
+  }, []);
 
   const handleJoinRoom = useCallback(() => {
     const id = joinInput.trim();
@@ -265,6 +282,62 @@ export default function Home() {
             </div>
           </div>
 
+          {/* ═══ Public Rooms — live from Firebase ═══ */}
+          <div
+            className="w-full max-w-5xl mx-auto animate-fade-in"
+            style={{ animationDelay: "100ms" }}
+          >
+            <p className="text-[11px] font-[400] uppercase tracking-[0.15em] text-felt-gray mb-[14px]">
+              Public Rooms
+            </p>
+
+            {publicRoomsLoading && (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border border-white/30 border-t-white animate-spin rounded-none" />
+                <span className="text-felt-gray text-[11px] uppercase tracking-[0.15em] font-[400]">
+                  Loading...
+                </span>
+              </div>
+            )}
+
+            {!publicRoomsLoading && publicRoomsList.length === 0 && (
+              <p className="text-felt-gray text-[12px] leading-[1.21] font-[400]">
+                No public rooms yet. Create one to get started!
+              </p>
+            )}
+
+            {publicRoomsList.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {publicRoomsList.map((room) => (
+                  <div
+                    key={room.id}
+                    onClick={() => navigate(`/room/${room.id}`)}
+                    className="border border-white/15 p-6 bg-black/10 backdrop-blur-md rounded-3xl
+                               flex flex-col gap-3 cursor-pointer
+                               hover:bg-white/5 transition-all duration-[800ms]
+                               ease-[cubic-bezier(0.19,1,0.22,1)]"
+                  >
+                    <h4 className="text-white text-[14px] font-[500] truncate">
+                      {room.name || room.id}
+                    </h4>
+                    <div className="flex items-center gap-3 text-[11px] text-felt-gray">
+                      <span>👥 {room.memberCount ?? 0}</span>
+                      <span
+                        className={
+                          room.status === "playing"
+                            ? "text-green-400"
+                            : "text-felt-gray"
+                        }
+                      >
+                        ● {room.status || "idle"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* ═══ Recent Rooms — ghost pill tags ═══ */}
           {recentRooms.length > 0 && (
             <div
@@ -307,6 +380,13 @@ export default function Home() {
           </p>
         </div>
       </div>
+
+      {/* ═══ Create Room Modal ═══ */}
+      <CreateRoomModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={handleModalCreate}
+      />
     </div>
   );
 }

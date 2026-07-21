@@ -4,12 +4,14 @@ import { ref, update, serverTimestamp, onValue } from "firebase/database";
 import { RoomProvider, useRoomContext } from "../context/RoomContext";
 import { database } from "../lib/firebase";
 import { isDesktop } from "../lib/runtime";
+import { extractVideoId } from "../lib/roomUtils";
 import VideoPlayer from "../components/VideoPlayer";
 import BrowserPlayer from "../components/BrowserPlayer";
 import Chat from "../components/Chat";
 import UserList from "../components/UserList";
 import TheaterToggle from "../components/TheaterToggle";
 import AdminPanel from "../components/AdminPanel";
+import PasswordGate from "../components/PasswordGate";
 
 // ─── Recent Rooms ──────────────────────────────────────────────
 const RECENT_ROOMS_KEY = "watchparty_recentRooms";
@@ -30,26 +32,6 @@ function pushRecentRoom(roomId) {
   }
 }
 
-function extractVideoId(input) {
-  if (!input || typeof input !== "string") return null;
-  const trimmed = input.trim();
-
-  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) return trimmed;
-
-  const urlParams = new URLSearchParams(
-    trimmed.includes("?") ? trimmed.split("?")[1] : "",
-  );
-  const v = urlParams.get("v");
-  if (v) return v;
-
-  const shortMatch = trimmed.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);
-  if (shortMatch) return shortMatch[1];
-
-  const shortsMatch = trimmed.match(/shorts\/([A-Za-z0-9_-]{11})/);
-  if (shortsMatch) return shortsMatch[1];
-
-  return null;
-}
 
 function RoomContent() {
   const { user, displayName, authLoading, roomData, updateDisplayName, leaveRoom } =
@@ -66,6 +48,25 @@ function RoomContent() {
   const [showTauriModal, setShowTauriModal] = useState(false);
 
   const [playerType, setPlayerType] = useState("youtube");
+
+  // ─── Password gate for private rooms ──────────────────────────────
+  const [passwordVerified, setPasswordVerified] = useState(() => {
+    // Check sessionStorage so verified users don't re-enter on refresh
+    try {
+      return sessionStorage.getItem(`room_pw_${roomId}`) === "verified";
+    } catch {
+      return false;
+    }
+  });
+
+  const handlePasswordVerified = useCallback(() => {
+    try {
+      sessionStorage.setItem(`room_pw_${roomId}`, "verified");
+    } catch {
+      // ignore
+    }
+    setPasswordVerified(true);
+  }, [roomId]);
 
   const { roomId } = useParams();
   const currentRoomId = roomId || "";
@@ -149,6 +150,24 @@ function RoomContent() {
   const members = roomData?.members || {};
   const membersCount = Object.keys(members).length;
   const isHost = user && roomData?.hostId === user.uid;
+
+  // ─── Password gate for private rooms ───────────────
+  const needsPassword =
+    roomData &&
+    roomData.isPublic === false &&
+    roomData.password &&
+    !passwordVerified;
+
+  if (needsPassword) {
+    return (
+      <PasswordGate
+        roomId={currentRoomId}
+        roomName={roomData.name || currentRoomId}
+        password={roomData.password}
+        onVerified={handlePasswordVerified}
+      />
+    );
+  }
 
   return (
     <div className="h-screen bg-obsidian text-paper flex flex-col font-roobert">

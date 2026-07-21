@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react";
-import { ref, onValue, set, serverTimestamp } from "firebase/database";
+import { ref, onValue, set, update, serverTimestamp, increment } from "firebase/database";
 import { database, getRoomRef } from "../lib/firebase";
 
 /**
@@ -101,6 +101,16 @@ export default function useRoom(roomId, user, displayName, onRoomData) {
       ip: ip,
       joinedAt: serverTimestamp(),
     });
+
+    // Increment memberCount in room data
+    await update(ref(database, `rooms/${roomId}`), {
+      memberCount: increment(1),
+    });
+
+    // Increment memberCount in publicRooms index if it exists
+    await update(ref(database, `publicRooms/${roomId}`), {
+      memberCount: increment(1),
+    });
   }, [roomId, user, displayName]);
 
   // ================================================================
@@ -111,6 +121,16 @@ export default function useRoom(roomId, user, displayName, onRoomData) {
 
     const memberRef = ref(database, `rooms/${roomId}/members/${user.uid}`);
     await set(memberRef, null); // удаляем узел
+
+    // Decrement memberCount in room data
+    await update(ref(database, `rooms/${roomId}`), {
+      memberCount: increment(-1),
+    });
+
+    // Decrement memberCount in publicRooms index if it exists
+    await update(ref(database, `publicRooms/${roomId}`), {
+      memberCount: increment(-1),
+    });
   }, [roomId, user]);
 
   return { createRoom, joinRoom, leaveRoom };
