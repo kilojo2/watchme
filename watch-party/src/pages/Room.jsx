@@ -34,7 +34,7 @@ function pushRecentRoom(roomId) {
 
 
 function RoomContent() {
-  const { user, displayName, authLoading, roomData, updateDisplayName, leaveRoom } =
+  const { user, displayName, authLoading, roomData, updateDisplayName, leaveRoom, deleteRoom } =
     useRoomContext();
   const navigate = useNavigate();
 
@@ -231,6 +231,25 @@ function RoomContent() {
                          transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] px-2 py-1 text-[12px] font-[400]"
             >
               🛡️
+            </button>
+          )}
+
+          {/* Delete Room button (host only) */}
+          {isHost && (
+            <button
+              onClick={async () => {
+                const confirmed = window.confirm(
+                  `Are you sure you want to permanently delete room "${currentRoomId}"?\n\nAll videos, messages, and user data will be lost.`,
+                );
+                if (!confirmed) return;
+                await deleteRoom();
+                navigate("/");
+              }}
+              title="Delete room"
+              className="text-red-400/60 hover:text-red-400
+                         transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] px-2 py-1 text-[12px] font-[400]"
+            >
+              🗑️
             </button>
           )}
 

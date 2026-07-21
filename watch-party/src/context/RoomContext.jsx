@@ -42,7 +42,7 @@ export function RoomProvider({ roomId, children }) {
   }, []);
 
   // Room management — передаём displayName отдельно (не полагаемся на user.displayName)
-  const { createRoom, joinRoom, leaveRoom } = useRoom(
+  const { createRoom, joinRoom, leaveRoom, deleteRoom } = useRoom(
     roomId,
     user,
     displayName,
@@ -166,6 +166,7 @@ export function RoomProvider({ roomId, children }) {
     createRoom,
     joinRoom,
     leaveRoom,
+    deleteRoom,
     sendMessage,
     updateDisplayName,
     hasJoined: hasJoined.current,

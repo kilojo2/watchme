@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react";
-import { ref, onValue, set, update, serverTimestamp, increment } from "firebase/database";
+import { ref, onValue, set, update, get, serverTimestamp, increment } from "firebase/database";
 import { database, getRoomRef } from "../lib/firebase";
 
 /**
@@ -20,13 +20,14 @@ async function getPublicIp() {
 }
 
 /**
- * useRoom — управление комнатой: создание, вступление, выход.
+ * useRoom — управление комнатой: создание, вступление, выход, удаление.
  *
  * ## Логика
  *
  * - **Создание комнаты**: записывает hostId + участника в Firebase.
  * - **Вступление**: добавляет { uid: { name, joinedAt } } в members.
- * - **Выход**: удаляет участника из members.
+ * - **Выход**: удаляет участника из members; если он был последним — комнату.
+ * - **Удаление**: стирает всю комнату и запись в publicRooms.
  * - **Подписка**: слушает изменения комнаты (статус, участники).
  *
  * @param {string} roomId — ID комнаты
@@ -37,6 +38,7 @@ async function getPublicIp() {
  *   createRoom: () => Promise<void>,
  *   joinRoom: () => Promise<void>,
  *   leaveRoom: () => Promise<void>,
+ *   deleteRoom: () => Promise<void>,
  * }}
  */
 export default function useRoom(roomId, user, displayName, onRoomData) {
@@ -118,13 +120,33 @@ export default function useRoom(roomId, user, displayName, onRoomData) {
   }, [roomId, user, displayName]);
 
   // ================================================================
+  // Удаление комнаты (хоcт или авто-очистка)
+  // ================================================================
+  const deleteRoom = useCallback(async () => {
+    if (!roomId) return;
+
+    // Удаляем основные данные комнаты
+    const roomRef = ref(database, `rooms/${roomId}`);
+    await set(roomRef, null);
+
+    // Удаляем запись из publicRooms, если есть
+    try {
+      const publicRef = ref(database, `publicRooms/${roomId}`);
+      await set(publicRef, null);
+    } catch {
+      // private room — нет записи в publicRooms
+    }
+  }, [roomId]);
+
+  // ================================================================
   // Выход из комнаты (удаляем себя из members)
+  // Если после выхода в комнате никого не осталось — удаляем её.
   // ================================================================
   const leaveRoom = useCallback(async () => {
     if (!user || !roomId) return;
 
     const memberRef = ref(database, `rooms/${roomId}/members/${user.uid}`);
-    await set(memberRef, null); // удаляем узел
+    await set(memberRef, null); // удаляем узел участника
 
     // Decrement memberCount in room data
     await update(ref(database, `rooms/${roomId}`), {
@@ -139,7 +161,18 @@ export default function useRoom(roomId, user, displayName, onRoomData) {
     } catch {
       // private room — no publicRooms node exists
     }
-  }, [roomId, user]);
 
-  return { createRoom, joinRoom, leaveRoom };
+    // Проверяем, остались ли ещё участники в комнате
+    try {
+      const membersSnapshot = await get(ref(database, `rooms/${roomId}/members`));
+      if (!membersSnapshot.exists()) {
+        // Последний вышел — удаляем комнату целиком
+        await deleteRoom();
+      }
+    } catch {
+      // Если комната уже удалена или ошибка чтения — игнорируем
+    }
+  }, [roomId, user, deleteRoom]);
+
+  return { createRoom, joinRoom, leaveRoom, deleteRoom };
 }
