@@ -207,6 +207,20 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-obsidian flex flex-col font-roobert">
       {/* ═════════════════════════════════════════════════════════
+          TRANSPARENT HEADER — WatchMe left · Profile right
+          ═════════════════════════════════════════════════════════ */}
+      <header className="w-full max-w-5xl mx-auto flex items-center justify-between px-6 pt-4 sm:pt-5">
+        <span className="text-paper text-[16px] sm:text-[18px] font-[300] tracking-[0.02em]">
+          WatchMe
+        </span>
+        <ProfileCard
+          displayName={displayName}
+          updateDisplayName={updateDisplayName}
+          loading={loading}
+        />
+      </header>
+
+      {/* ═════════════════════════════════════════════════════════
           HERO — full-viewport iridescent-backed section
           ═════════════════════════════════════════════════════════ */}
       <div className="relative flex flex-col items-center pt-12 pb-24 px-6 overflow-hidden">
