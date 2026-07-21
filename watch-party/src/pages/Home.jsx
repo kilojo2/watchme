@@ -207,23 +207,20 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-obsidian flex flex-col font-roobert">
       {/* ═════════════════════════════════════════════════════════
-          TRANSPARENT HEADER — WatchMe left · Profile right
-          ═════════════════════════════════════════════════════════ */}
-      <header className="w-full max-w-5xl mx-auto flex items-center justify-between px-6 pt-4 sm:pt-5">
-        <span className="text-paper text-[16px] sm:text-[18px] font-[300] tracking-[0.02em]">
-          WatchMe
-        </span>
-        <ProfileCard
-          displayName={displayName}
-          updateDisplayName={updateDisplayName}
-          loading={loading}
-        />
-      </header>
-
-      {/* ═════════════════════════════════════════════════════════
           HERO — full-viewport iridescent-backed section
           ═════════════════════════════════════════════════════════ */}
-      <div className="relative flex flex-col items-center pt-12 pb-24 px-6 overflow-hidden">
+      <div className="relative flex flex-col items-center pt-16 pb-24 px-6 overflow-hidden">
+        {/* ═══ TRANSPARENT HEADER — floats over iridescent glow ═══ */}
+        <header className="absolute top-0 left-0 right-0 z-20 w-full max-w-5xl mx-auto flex items-center justify-between px-6 pt-4 sm:pt-5">
+          <span className="text-paper text-[16px] sm:text-[18px] font-[300] tracking-[0.02em]">
+            WatchMe
+          </span>
+          <ProfileCard
+            displayName={displayName}
+            updateDisplayName={updateDisplayName}
+            loading={loading}
+          />
+        </header>
         {/* Iridescent backdrop */}
         <div
           className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[800px] hero-iridescent animate-iridescent opacity-30 pointer-events-none"
