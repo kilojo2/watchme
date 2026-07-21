@@ -363,11 +363,19 @@ function RoomContent() {
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-obsidian">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border border-white/30 border-t-white animate-spin rounded-none" />
-          <span className="text-felt-gray text-[11px] uppercase tracking-[0.15em] font-[400]">
-            Authenticating...
-          </span>
+        <div className="flex flex-col items-center gap-6 animate-fade-in" style={{ animationDuration: "600ms" }}>
+          <img
+            src="/assets/logo.jpg"
+            alt="WatchMe"
+            className="h-[48px] sm:h-[56px] w-auto object-contain opacity-80"
+            style={{ animation: "iridescent-shift 8s ease-in-out infinite" }}
+          />
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-5 h-5 border border-white/20 border-t-white animate-spin rounded-none" />
+            <span className="text-felt-gray text-[11px] uppercase tracking-[0.15em] font-[400]">
+              Authenticating...
+            </span>
+          </div>
         </div>
       </div>
     );
@@ -402,6 +410,11 @@ function RoomContent() {
       <header className="flex items-center justify-between px-4 sm:px-[34px] py-2.5 border-b border-white/5 bg-obsidian shrink-0">
         {/* Left: Brand + Room info */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <img
+            src="/assets/logo-mark.png"
+            alt="WatchMe"
+            className="h-[18px] sm:h-[20px] w-auto object-contain shrink-0"
+          />
           <span className="text-sm font-medium text-paper tracking-tight">
             WatchMe
           </span>

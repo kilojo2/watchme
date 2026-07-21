@@ -136,9 +136,16 @@ export default function CreateRoomModal({ isOpen, onClose, onCreate }) {
         </button>
 
         {/* Header */}
-        <h2 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.2em] mb-7">
-          CREATE ROOM
-        </h2>
+        <div className="flex items-center gap-2 mb-7">
+          <img
+            src="/assets/logo-mark.png"
+            alt="WatchMe"
+            className="h-[14px] sm:h-[16px] w-auto object-contain shrink-0"
+          />
+          <h2 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.2em]">
+            CREATE ROOM
+          </h2>
+        </div>
 
         {/* Room Name */}
         <label className="block mb-6">

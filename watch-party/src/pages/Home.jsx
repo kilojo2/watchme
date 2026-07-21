@@ -222,12 +222,17 @@ export default function Home() {
             transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]
             ${visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"}`}
         >
-          <div className="flex items-baseline gap-3">
+          <div className="flex items-center gap-3">
+            <img
+              src="/assets/logo-mark.png"
+              alt="WatchMe"
+              className="h-[22px] sm:h-[24px] w-auto object-contain shrink-0"
+            />
             <span className="text-white text-[18px] font-[300] tracking-[0.02em]">
               WatchMe
             </span>
             <span className="text-white/30 text-[11px] font-[400] tracking-[0.15em] uppercase hidden sm:inline">
-              watch together.
+              WATCH TOGETHER.
             </span>
           </div>
           <ProfileCard
