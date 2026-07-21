@@ -107,7 +107,7 @@ function SharePopover({ roomId, isOpen, onClose, anchorRef }) {
   return (
     <div
       ref={popoverRef}
-      className="absolute top-full right-0 mt-2 w-64 bg-inkstone border border-white/15 rounded-2xl p-4 shadow-xl z-50 animate-fade-in"
+      className="absolute top-full right-0 mt-2 w-80 bg-inkstone border border-white/15 rounded-2xl p-4 shadow-xl z-50 animate-fade-in"
     >
       <h4 className="text-[10px] font-mono text-felt-gray uppercase tracking-[0.15em] mb-3">
         Share Room
@@ -419,9 +419,9 @@ function RoomContent() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Display name (desktop) */}
+          {/* Display name */}
           {user && (
-            <div className="hidden md:flex items-center mr-1">
+            <div className="flex items-center mr-1">
               {editingName ? (
                 <div className="flex items-center gap-1">
                   <input
@@ -434,18 +434,21 @@ function RoomContent() {
                   />
                 </div>
               ) : (
-                <span
+                <button
                   onClick={() => {
                     setNameInput(displayName);
                     setEditingName(true);
                   }}
                   title="Click to rename"
-                  className="text-[11px] text-ash-mist border-b border-dashed border-white/10
-                             cursor-pointer hover:text-paper
-                             transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]"
+                  className="flex items-center gap-1 text-[11px] text-ash-mist hover:text-paper
+                             border-b border-dashed border-white/15 hover:border-white/40
+                             cursor-pointer transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]"
                 >
                   {displayName}
-                </span>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-felt-gray/50 shrink-0">
+                    <path d="M7.5 0.5L9.5 2.5L3.5 8.5L0.5 9.5L1.5 6.5L7.5 0.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
               )}
             </div>
           )}
@@ -761,13 +764,11 @@ function RoomContent() {
         {/* Participants Drawer */}
         <div
           className={`${
-            showParticipants
-              ? "w-[300px] lg:w-[320px] translate-x-0"
-              : "w-0 translate-x-full overflow-hidden"
-          } border-l border-white/10 bg-obsidian flex flex-col shrink-0 transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] relative z-20 lg:relative lg:z-0`}
+            showParticipants ? "translate-x-0" : "translate-x-full pointer-events-none"
+          } fixed lg:relative inset-y-0 right-0 z-20 lg:z-0 w-[300px] lg:w-[320px] border-l border-white/10 bg-obsidian flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
         >
           {showParticipants && (
-            <div className="w-[300px] lg:w-[320px] flex flex-col h-full">
+            <div className="flex flex-col h-full">
               {/* Header */}
               <div className="flex items-center justify-between px-[26px] py-3 border-b border-white/5 shrink-0">
                 <h3 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.15em]">
@@ -793,13 +794,11 @@ function RoomContent() {
         {/* Chat Drawer */}
         <div
           className={`${
-            showChat
-              ? "w-[300px] lg:w-[340px] translate-x-0"
-              : "w-0 translate-x-full overflow-hidden"
-          } border-l border-white/10 bg-inkstone flex flex-col shrink-0 transition-all duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)] relative z-20 lg:relative lg:z-0`}
+            showChat ? "translate-x-0" : "translate-x-full pointer-events-none"
+          } fixed lg:relative inset-y-0 right-0 z-20 lg:z-0 w-[300px] lg:w-[340px] border-l border-white/10 bg-inkstone flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
         >
           {showChat && (
-            <div className="w-[300px] lg:w-[340px] flex flex-col h-full">
+            <div className="flex flex-col h-full">
               {/* Header */}
               <div className="flex items-center justify-between px-[26px] py-3 border-b border-white/5 shrink-0">
                 <h3 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.15em]">
