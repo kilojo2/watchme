@@ -1185,7 +1185,7 @@ function RoomContent() {
                 <div className="shrink-0 flex gap-2 items-center mb-3">
                   <button
                     onClick={() => setShowAddVideo(true)}
-                    className="ghost-pill-sm"
+                    className="ghost-pill-sm gap-1.5"
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
