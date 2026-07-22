@@ -6,10 +6,10 @@
    editorial gallery floating on molten light.
    ══════════════════════════════════════════════════════════════════ */
 @theme {
-  /* ── Colors ─────────────────────────────────────────────────── */
-  --color-obsidian: #000000;
-  --color-paper: #ffffff;
-  --color-inkstone: #181818;
+  /* ── Colors (Dark Cinema — default) ─────────────────────────── */
+  --color-obsidian: #0a0a0a;
+  --color-paper: #e8e4de;
+  --color-inkstone: #141414;
   --color-felt-gray: #6d6d6d;
   --color-slate-pill: #636363;
   --color-ash-mist: #9a9a9a;
@@ -78,6 +78,40 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   THEME: Light Cinema
+   Warm off-white / ivory backgrounds, soft light gray surfaces,
+   dark charcoal typography, muted champagne accent.
+   ══════════════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --color-obsidian: #f5f0eb;
+  --color-paper: #1a1a1a;
+  --color-inkstone: #e8e2da;
+  --color-felt-gray: #8a8a8a;
+  --color-slate-pill: #939393;
+  --color-ash-mist: #6d6d6d;
+  --color-pewter: #7a7a7a;
+  --color-iridescent-fade: #c04d3a;
+
+  /* Light theme scrollbar */
+  --scrollbar-thumb: #c8c0b6;
+  --scrollbar-thumb-hover: #b0a89e;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Smooth Theme Transition
+   Applied to all themed elements for a polished switch.
+   ══════════════════════════════════════════════════════════════════ */
+.theme-transition,
+.theme-transition * {
+  transition: background-color 0.6s cubic-bezier(0.19, 1, 0.22, 1),
+              color 0.6s cubic-bezier(0.19, 1, 0.22, 1),
+              border-color 0.6s cubic-bezier(0.19, 1, 0.22, 1),
+              fill 0.6s cubic-bezier(0.19, 1, 0.22, 1),
+              stroke 0.6s cubic-bezier(0.19, 1, 0.22, 1),
+              opacity 0.6s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* ══════════════════════════════════════════════════════════════════
    Global Reset
    ══════════════════════════════════════════════════════════════════ */
 *,
@@ -97,10 +131,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: var(--color-obsidian);
   color: var(--color-paper);
+  transition: background-color 0.6s cubic-bezier(0.19, 1, 0.22, 1),
+              color 0.6s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Scrollbar — sharp 0px radius
+   Scrollbar — sharp 0px radius, theme-aware
    ══════════════════════════════════════════════════════════════════ */
 ::-webkit-scrollbar {
   width: 6px;
@@ -111,12 +147,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: var(--scrollbar-thumb, #2a2a2a);
   border-radius: 0px;
+  transition: background 0.6s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb-hover, #3a3a3a);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -257,6 +294,15 @@ body {
   animation: fade-in 0.8s var(--ease-patient) both;
 }
 
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in-scale {
+  animation: fade-in-scale 0.4s var(--ease-patient) both;
+}
+
 @keyframes iridescent-shift {
   0%   { background-position: 0% 50%; }
   50%  { background-position: 100% 50%; }
@@ -268,6 +314,24 @@ body {
   animation: iridescent-shift 12s ease infinite;
 }
 
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s var(--ease-patient) both;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
 /* ── Delay utilities ────────────────────────────────────────────── */
 .delay-0    { animation-delay: 0ms; }
 .delay-50   { animation-delay: 50ms; }
@@ -276,3 +340,76 @@ body {
 .delay-300  { animation-delay: 300ms; }
 .delay-400  { animation-delay: 400ms; }
 .delay-500  { animation-delay: 500ms; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Cinema Mode — reduced UI, dark surroundings
+   ══════════════════════════════════════════════════════════════════ */
+.cinema-mode body {
+  background: #000 !important;
+}
+
+.cinema-mode .cinema-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.cinema-mode .cinema-video-container {
+  z-index: 50;
+}
+
+/* ── Fade controls on inactivity in cinema mode ─────────────────── */
+.cinema-controls-hidden .cinema-controls {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+
+.cinema-controls-visible .cinema-controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.cinema-controls {
+  transition: opacity 0.6s var(--ease-patient),
+              transform 0.6s var(--ease-patient);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Editorial Input — Light theme variant
+   ══════════════════════════════════════════════════════════════════ */
+[data-theme="light"] .editorial-input {
+  border-bottom-color: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .editorial-input:focus {
+  border-bottom-color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .editorial-input::placeholder {
+  color: var(--color-felt-gray);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Ghost Pill — Light theme overrides
+   ══════════════════════════════════════════════════════════════════ */
+[data-theme="light"] .ghost-pill {
+  border-color: rgba(0, 0, 0, 0.25);
+  color: var(--color-paper);
+}
+
+[data-theme="light"] .ghost-pill:hover {
+  border-color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .ghost-pill-sm {
+  border-color: rgba(0, 0, 0, 0.2);
+  color: var(--color-paper);
+}
+
+[data-theme="light"] .ghost-pill-sm:hover {
+  border-color: rgba(0, 0, 0, 0.4);
+}
