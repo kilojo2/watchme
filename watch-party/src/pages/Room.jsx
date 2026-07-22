@@ -778,7 +778,7 @@ function RoomContent() {
         <div
           className={`${
             showParticipants ? "translate-x-0" : "translate-x-full pointer-events-none"
-          } fixed lg:relative inset-y-0 right-0 z-20 lg:z-0 w-[300px] lg:w-[320px] border-l border-white/10 bg-obsidian flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
+          } fixed lg:absolute inset-y-0 right-0 z-20 lg:z-10 w-[300px] lg:w-[320px] border-l border-white/10 bg-obsidian flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
         >
           {showParticipants && (
             <div className="flex flex-col h-full">
@@ -808,7 +808,7 @@ function RoomContent() {
         <div
           className={`${
             showChat ? "translate-x-0" : "translate-x-full pointer-events-none"
-          } fixed lg:relative inset-y-0 right-0 z-20 lg:z-0 w-[300px] lg:w-[340px] border-l border-white/10 bg-inkstone flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
+          } fixed lg:absolute inset-y-0 right-0 z-20 lg:z-10 w-[300px] lg:w-[340px] border-l border-white/10 bg-inkstone flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
         >
           {showChat && (
             <div className="flex flex-col h-full">
