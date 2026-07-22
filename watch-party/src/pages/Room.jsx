@@ -395,7 +395,7 @@ function RoomSettings({ isOpen, onClose, theme, toggleTheme, cinemaMode, onToggl
   return (
     <div
       ref={panelRef}
-      className="absolute top-full right-0 mt-2 w-64 bg-inkstone border border-white/10 rounded-2xl p-4 shadow-2xl z-50 animate-fade-in"
+      className="absolute top-full right-0 mt-2 w-80 bg-inkstone border border-white/10 rounded-2xl p-5 shadow-2xl z-50 animate-fade-in"
     >
       <h4 className="text-[10px] font-mono text-felt-gray uppercase tracking-[0.15em] mb-3">
         Room Settings
