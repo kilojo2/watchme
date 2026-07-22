@@ -74,7 +74,7 @@ export default function UserList() {
           );
         })}
 
-        {count === 0 && (
+        {entries.length === 0 && (
           <div className="text-center text-felt-gray text-sm py-4">
             No participants yet
           </div>
