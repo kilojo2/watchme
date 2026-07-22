@@ -254,9 +254,8 @@ function RoomContent() {
   const [showTauriModal, setShowTauriModal] = useState(false);
   const [playerType, setPlayerType] = useState("youtube");
 
-  // ─── Drawer states ─────────────────────────────────────────
-  const [showChat, setShowChat] = useState(false);
-  const [showParticipants, setShowParticipants] = useState(false);
+  // ─── Sidebar tab state ─────────────────────────────────────
+  const [activeSidebarTab, setActiveSidebarTab] = useState(null); // null | 'chat' | 'participants'
   const [showShare, setShowShare] = useState(false);
   const shareButtonRef = useRef(null);
 
@@ -496,19 +495,23 @@ function RoomContent() {
           {/* Participants */}
           <ParticipantsButton
             count={membersCount}
-            isOpen={showParticipants}
-            onClick={() => {
-              setShowParticipants((prev) => !prev);
-              // Close chat if opening participants on mobile
-            }}
+            isOpen={activeSidebarTab === 'participants'}
+            onClick={() =>
+              setActiveSidebarTab((prev) =>
+                prev === 'participants' ? null : 'participants'
+              )
+            }
           />
 
           {/* Chat */}
           <ChatButton
-            isOpen={showChat}
+            isOpen={activeSidebarTab === 'chat'}
             onClick={() => {
-              setShowChat((prev) => !prev);
-              if (!showChat) setUnreadCount(0);
+              setActiveSidebarTab((prev) => {
+                if (prev === 'chat') return null;
+                setUnreadCount(0);
+                return 'chat';
+              });
             }}
             unread={unreadCount}
           />
@@ -762,81 +765,55 @@ function RoomContent() {
           </div>
         </div>
 
-        {/* ──────── RIGHT DRAWERS ──────── */}
-        {/* Overlay for mobile when drawer is open */}
-        {(showParticipants || showChat) && (
-          <div
-            className="fixed inset-0 z-10 bg-obsidian/40 lg:hidden"
-            onClick={() => {
-              setShowParticipants(false);
-              setShowChat(false);
-            }}
-          />
+        {/* ──────── RIGHT SIDEBAR (tabs: chat | participants) ──────── */}
+        {activeSidebarTab && (
+          <>
+            {/* Mobile overlay */}
+            <div
+              className="fixed inset-0 z-10 bg-obsidian/40 lg:hidden"
+              onClick={() => setActiveSidebarTab(null)}
+            />
+
+            {/* Sidebar container — single fixed-width panel */}
+            <div className="fixed lg:relative inset-y-0 right-0 z-20 w-[300px] lg:w-[350px] border-l border-white/10 bg-obsidian flex flex-col h-full shrink-0">
+              {/* Header */}
+              <div className="flex items-center justify-between px-[26px] py-3 border-b border-white/5 shrink-0">
+                <h3 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.15em]">
+                  {activeSidebarTab === 'participants' ? (
+                    <>Participants — <span className="text-paper">{membersCount}</span></>
+                  ) : (
+                    'Chat'
+                  )}
+                </h3>
+                <button
+                  onClick={() => setActiveSidebarTab(null)}
+                  className="text-felt-gray hover:text-paper transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content — switches between chat and participants */}
+              {activeSidebarTab === 'participants' ? (
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  {members && Object.keys(members).length > 0 ? (
+                    <UserList />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-[13px] text-felt-gray">
+                      No participants yet
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <Chat />
+                </div>
+              )}
+            </div>
+          </>
         )}
-
-        {/* Participants Drawer */}
-        <div
-          className={`${
-            showParticipants
-              ? "translate-x-0 lg:relative"
-              : "translate-x-full pointer-events-none lg:absolute"
-          } fixed inset-y-0 right-0 z-20 lg:z-0 w-[300px] lg:w-[320px] border-l border-white/10 bg-obsidian flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
-        >
-          {showParticipants && (
-            <div className="flex flex-col h-full">
-              {/* Header */}
-              <div className="flex items-center justify-between px-[26px] py-3 border-b border-white/5 shrink-0">
-                <h3 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.15em]">
-                  Participants — <span className="text-paper">{membersCount}</span>
-                </h3>
-                <button
-                  onClick={() => setShowParticipants(false)}
-                  className="text-felt-gray hover:text-paper transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
-              {/* List */}
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <UserList />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Chat Drawer */}
-        <div
-          className={`${
-            showChat
-              ? "translate-x-0 lg:relative"
-              : "translate-x-full pointer-events-none lg:absolute"
-          } fixed inset-y-0 right-0 z-20 lg:z-0 w-[300px] lg:w-[340px] border-l border-white/10 bg-inkstone flex flex-col shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.19,1,0.22,1)]`}
-        >
-          {showChat && (
-            <div className="flex flex-col h-full">
-              {/* Header */}
-              <div className="flex items-center justify-between px-[26px] py-3 border-b border-white/5 shrink-0">
-                <h3 className="text-[11px] font-mono font-medium text-felt-gray uppercase tracking-[0.15em]">
-                  Chat
-                </h3>
-                <button
-                  onClick={() => setShowChat(false)}
-                  className="text-felt-gray hover:text-paper transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
-              {/* Chat component */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <Chat />
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
